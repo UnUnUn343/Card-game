@@ -1,7 +1,7 @@
 {
   "name": "pokemon-battle",
   "productName": "Pokemon Battle",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "private": true,
   "description": "Бій покемонів — desktop launcher and game",
   "main": "src/main/main.js",

@@ -123,6 +123,21 @@ async function main() {
     ok(title.some(t => /v185/.test(t)), `game window title shows the version (${title.join(' | ')})`);
     ok(await game.evaluate(() => /v185 —/.test(document.documentElement.outerHTML.slice(0, 400)) || true), 'serving the v185 build');
     ok(/185/.test(await app.evaluate(() => global.__pkmn.running.version)), 'main process says v185 is running');
+    const fs0 = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some(w => w.isFullScreen()));
+    ok(fs0, 'game window opens fullscreen');
+    await game.waitForSelector('#pkmn-desktop-hint', { state: 'attached', timeout: 5000 });
+    ok(/F11/.test(await game.locator('#pkmn-desktop-hint').evaluate(h => h.shadowRoot.textContent)), 'fullscreen hint shown (F11 / Esc to exit)');
+    // Real input pipeline (Playwright's CDP key events bypass Electron's before-input-event).
+    const key = k => app.evaluate(({ BrowserWindow }, k) => {
+      const w = BrowserWindow.getAllWindows().find(x => x.webContents.getURL().startsWith('app://game/'));
+      w.webContents.sendInputEvent({ type: 'keyDown', keyCode: k }); w.webContents.sendInputEvent({ type: 'keyUp', keyCode: k });
+    }, k);
+    const isFs = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some(w => w.isFullScreen()));
+    await key('Escape'); await game.waitForTimeout(800);
+    ok(!(await isFs()), 'Esc leaves fullscreen');
+    await key('F11'); await game.waitForTimeout(800);
+    ok(await isFs(), 'F11 goes back to fullscreen');
+    await key('F11'); await game.waitForTimeout(800);
     await game.waitForTimeout(1500);
     await shot(game, 'game-v185-menu');
     const workerOk = await game.evaluate(() => new Promise(res => {

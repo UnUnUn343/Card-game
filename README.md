@@ -20,7 +20,8 @@ The game as a Windows app, with a launcher that updates itself. The game itself 
 
 | Key | Does |
 |---|---|
-| F11 or Alt+Enter | fullscreen |
+| F11 or Alt+Enter | fullscreen on/off (the game starts fullscreen; ⚙ to change) |
+| Esc | leave fullscreen |
 | Ctrl + / Ctrl − / Ctrl 0 | zoom the game in / out / reset (remembered) |
 | F12 | developer tools |
 

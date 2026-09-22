@@ -210,6 +210,7 @@ function openGame(build) {
     x: saved?.x, y: saved?.y,
     minWidth: 1024, minHeight: 640,
     show: false,
+    fullscreen: !!settings.get('startFullscreen'),
     backgroundColor: '#070d18',
     title: gameTitle(),
     icon: path.join(APP_ROOT, 'build', 'icon.png'),
@@ -232,6 +233,7 @@ function openGame(build) {
     if (input.type !== 'keyDown') return;
     const k = input.key.toLowerCase();
     if (input.key === 'F11' || (input.alt && k === 'enter')) { e.preventDefault(); gameWin.setFullScreen(!gameWin.isFullScreen()); }
+    else if (input.key === 'Escape' && gameWin.isFullScreen()) gameWin.setFullScreen(false); // the game itself has no keyboard controls
     else if (input.key === 'F12' || (input.control && input.shift && k === 'i')) { e.preventDefault(); wc.toggleDevTools(); }
     else if (input.control && (k === '=' || k === '+')) { e.preventDefault(); setZoom(wc, 0.5); }
     else if (input.control && k === '-') { e.preventDefault(); setZoom(wc, -0.5); }
@@ -248,9 +250,12 @@ function openGame(build) {
     if (details.level === 'error') log('[game console]', `${details.message} (${details.sourceId}:${details.lineNumber})`);
   });
 
+  gameWin.on('enter-full-screen', () => wc.send('game:fullscreen', true));
+  gameWin.on('leave-full-screen', () => wc.send('game:fullscreen', false));
+  wc.on('did-finish-load', () => { if (gameWin.isFullScreen()) wc.send('game:fullscreen', true); });
   gameWin.once('ready-to-show', () => {
+    // Maximised underneath, so leaving fullscreen (F11 / Esc) lands on a full-size window.
     if (saved?.maximized || !saved) gameWin.maximize();
-    if (settings.get('startFullscreen')) gameWin.setFullScreen(true);
     gameWin.show();
     if (launcherWin && !launcherWin.isDestroyed()) launcherWin.close();
   });

@@ -17,6 +17,7 @@ const TEXT = {
     installNow: 'Встановити зараз',
     blocked: v => `Для версії гри v${v} потрібен новіший лаунчер. Він завантажується.`,
     later: 'Пізніше',
+    fullscreen: 'Повний екран · <b>F11</b> або <b>Esc</b> — вийти',
   },
   en: {
     gameReady: v => `A new version of the game, <b>v${v}</b>, is out and already downloaded.`,
@@ -26,6 +27,7 @@ const TEXT = {
     installNow: 'Install now',
     blocked: v => `Game v${v} needs a newer launcher. It is downloading.`,
     later: 'Later',
+    fullscreen: 'Fullscreen · <b>F11</b> or <b>Esc</b> to exit',
   },
 };
 
@@ -120,6 +122,32 @@ function render(state) {
   clear();
 }
 
+// Fullscreen hint: its own host so it never fights the update notice for the same slot.
+let hintRoot = null, hintTimer = null;
+function showFullscreenHint() {
+  if (!info) return;
+  if (!hintRoot || !hintRoot.host.isConnected) {
+    const h = document.createElement('div');
+    h.id = 'pkmn-desktop-hint';
+    hintRoot = h.attachShadow({ mode: 'open' });
+    (document.body || document.documentElement).appendChild(h);
+  }
+  const t = TEXT[info.lang] || TEXT.uk;
+  hintRoot.innerHTML = `<style>:host{all:initial}
+    .hint{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2147483600;pointer-events:none;
+      font:13px/1.4 "Segoe UI",system-ui,sans-serif;color:#e2e8f0;background:rgba(12,21,34,.92);
+      border:1px solid #334155;border-radius:999px;padding:8px 16px;box-shadow:0 8px 30px rgba(0,0,0,.5);
+      transition:opacity .4s}
+    .hint b{color:#c4b5fd}.hint.out{opacity:0}</style><div class="hint">${t.fullscreen}</div>`;
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => { const el = hintRoot.querySelector('.hint'); if (el) el.classList.add('out'); }, 3500);
+}
+let pendingFullscreenHint = false;
+ipcRenderer.on('game:fullscreen', (_e, on) => {
+  if (!on) { if (hintRoot) hintRoot.innerHTML = ''; return; }
+  if (info) showFullscreenHint(); else pendingFullscreenHint = true;
+});
+
 let lastState = null;
 ipcRenderer.on('update:state', (_e, s) => { lastState = s; render(s); });
 ipcRenderer.on('game:lang', (_e, lang) => { if (info) { info.lang = lang; render(lastState); } });
@@ -128,4 +156,5 @@ window.addEventListener('DOMContentLoaded', async () => {
   info = await ipcRenderer.invoke('game:info');
   lastState = lastState || info.update;
   render(lastState);
+  if (pendingFullscreenHint) { pendingFullscreenHint = false; showFullscreenHint(); }
 });
