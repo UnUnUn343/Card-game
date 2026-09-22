@@ -19,7 +19,7 @@ const zlib = require('zlib');
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const { extractGameHtml } = require('../src/shared/gamePackage');
-const { detectGameVersion, normalizeVersion } = require('../src/shared/versioning');
+const { detectGameVersion, normalizeVersion, compareVersions } = require('../src/shared/versioning');
 const { SCHEMA, parseManifest, releaseAssetUrl, isConfiguredRepo } = require('../src/shared/manifest');
 
 const ROOT = path.join(__dirname, '..');
@@ -110,16 +110,31 @@ async function readBase(o) {
   return fetchJson(`https://github.com/${o.repo}/releases/latest/download/latest.json`).catch(() => null);
 }
 
-/** The latest.json from the most recent release OTHER than `exceptTag` that has one. */
+/**
+ * The most up-to-date game and launcher entries published so far (ignoring `exceptTag`).
+ *
+ * Don't trust GitHub's list order: a release's created_at is the date of the commit it was tagged
+ * on, and the list isn't reliably sorted even by that (v184 was listed ahead of the newer
+ * launcher-v1.0.2, which is how v185's latest.json lost its launcher entry). So read latest.json from
+ * the recent published releases and keep the HIGHEST version of each block, whatever the order.
+ */
 function previousManifestViaGh(repo, exceptTag) {
-  const releases = JSON.parse(gh('api', `repos/${repo}/releases?per_page=50`));
+  const releases = JSON.parse(gh('api', `repos/${repo}/releases?per_page=30`))
+    .filter(r => !r.draft && !r.prerelease && r.tag_name !== exceptTag && (r.assets || []).some(a => a.name === 'latest.json'))
+    .sort((x, y) => String(y.published_at || '').localeCompare(String(x.published_at || '')))
+    .slice(0, 12);
+  let best = null;
   for (const r of releases) {
-    if (r.draft || r.prerelease || r.tag_name === exceptTag) continue; // pre-releases are test builds
-    if (!(r.assets || []).some(a => a.name === 'latest.json')) continue;
-    try { return JSON.parse(gh('release', 'download', r.tag_name, '--repo', repo, '--pattern', 'latest.json', '--output', '-')); }
-    catch { /* try the next one */ }
+    let m;
+    try { m = JSON.parse(gh('release', 'download', r.tag_name, '--repo', repo, '--pattern', 'latest.json', '--output', '-')); }
+    catch { continue; }
+    for (const k of ['game', 'launcher']) {
+      if (!m || !m[k] || !m[k].version) continue;
+      best = best || { schema: SCHEMA };
+      if (!best[k] || compareVersions(m[k].version, best[k].version) > 0) best[k] = m[k];
+    }
   }
-  return null;
+  return best;
 }
 
 function writeOut(dir, files) {

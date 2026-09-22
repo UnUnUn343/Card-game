@@ -19,6 +19,7 @@ Building the installer from Linux/macOS: `npm run dist:linux-host` (no Wine need
 
 ## Release mechanics
 - Game release = a GitHub release whose tag is `vNNN` with the `.html`/`.zip` attached → `.github/workflows/game-release.yml` runs `scripts/release.js ci-game`, which uploads `pokemon_battle_vNNN.html.gz` + `latest.json` (carrying the previous `launcher` block forward).
+- Carrying blocks forward: `previousManifestViaGh` keeps the HIGHEST game and launcher versions across recent releases' latest.json. Never "first in GitHub's list": that order is unreliable and once dropped the launcher block (v185). To repair a release's latest.json, run the "Game release" workflow by hand with its tag.
 - Launcher release = the manual "Launcher release" workflow → builds on windows-latest with `app.config.json` pointed at the repo and the newest game bundled, uploads the installer + `latest.json` (carrying the `game` block forward), marks it latest.
 - A game build that needs new launcher features: publish it with `minLauncher` set (`scripts/release.js game … --min-launcher 1.1.0`). Older launchers then show "needs a newer launcher" instead of installing it.
 - Launcher self-update runs electron-builder's one-click NSIS installer with `/S --updated [--force-run]`. Keep `nsis.oneClick: true` and `perMachine: false` (no UAC prompt), or that breaks.

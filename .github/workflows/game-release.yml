@@ -5,13 +5,19 @@ name: Game release
 on:
   release:
     types: [published]
+  # Repair: rebuild latest.json for a release that is already published.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Game release tag to rebuild latest.json for, e.g. v185
+        required: true
 
 permissions:
   contents: write
 
 jobs:
   publish-game:
-    if: ${{ !startsWith(github.event.release.tag_name, 'launcher-') }}
+    if: ${{ !startsWith(github.event.release.tag_name || inputs.tag, 'launcher-') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +28,7 @@ jobs:
         run: node scripts/release.js ci-game --repo "$GITHUB_REPOSITORY" --tag "$TAG"
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
       # GitHub otherwise picks "Latest" by date AND version number, and a vNNN tag outranks
       # launcher-vX.Y.Z, so creating a draft can make an older release "Latest". Launchers read
       # latest.json from whichever release is Latest, so pin it to the one just published.
@@ -31,4 +37,4 @@ jobs:
         run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}

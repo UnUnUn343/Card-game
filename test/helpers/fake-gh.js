@@ -17,7 +17,9 @@ const meta = tag => JSON.parse(fs.readFileSync(path.join(rel(tag), 'release.json
 const fail = msg => { process.stderr.write(msg + '\n'); process.exit(1); };
 
 if (a[0] === 'api' && /releases/.test(a[1])) {
-  const list = fs.readdirSync(root).map(t => ({ ...meta(t), assets: assets(t) })).sort((x, y) => y.created - x.created);
+  // Deliberately NOT newest-first: GitHub's own order is unreliable (it listed v184 ahead of the newer
+  // launcher-v1.0.2), so list by tag name, descending, which reproduces exactly that.
+  const list = fs.readdirSync(root).map(t => ({ ...meta(t), assets: assets(t) })).sort((x, y) => y.tag_name.localeCompare(x.tag_name));
   process.stdout.write(JSON.stringify(list));
 } else if (a[0] === 'release' && a[1] === 'view') {
   const m = meta(a[2]);

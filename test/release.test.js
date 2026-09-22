@@ -66,7 +66,7 @@ test('CI: publishing a release with a .zip attached adds the .gz and a latest.js
   fs.writeFileSync(path.join(binDir, 'gh'), `#!/bin/sh\nexec node ${JSON.stringify(path.join(__dirname, 'helpers', 'fake-gh.js'))} "$@"\n`, { mode: 0o755 });
   const mk = (tag, created, files, body = '') => {
     fs.mkdirSync(path.join(ghDir, tag, 'assets'), { recursive: true });
-    fs.writeFileSync(path.join(ghDir, tag, 'release.json'), JSON.stringify({ tag_name: tag, body, draft: false, created }));
+    fs.writeFileSync(path.join(ghDir, tag, 'release.json'), JSON.stringify({ tag_name: tag, body, draft: false, published_at: new Date(Date.UTC(2026, 8, 22, 12, Math.round(created * 10))).toISOString() }));
     for (const [n, d] of Object.entries(files)) fs.writeFileSync(path.join(ghDir, tag, 'assets', n), d);
   };
   const launcher = { version: '1.0.0', url: 'https://github.com/sasha/pb/releases/download/launcher-v1.0.0/Setup.exe', sha256: 'f'.repeat(64), size: 9 };
@@ -96,4 +96,29 @@ test('CI: publishing a release with a .zip attached adds the .gz and a latest.js
   execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'release.js'), 'ci-game', '--repo', 'sasha/pb', '--tag', 'announcement'], { env, stdio: 'pipe' });
   assert.deepEqual(fs.readdirSync(path.join(ghDir, 'announcement', 'assets')), ['latest.json']);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(ghDir, 'announcement', 'assets', 'latest.json'), 'utf8')), m);
+});
+
+test('CI: the new latest.json keeps the NEWEST launcher even when GitHub lists an older release first (the v185 bug)', { skip: process.platform === 'win32' }, async () => {
+  const { execFileSync } = require('child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pkmn-gh2-'));
+  const ghDir = path.join(dir, 'gh'); const binDir = path.join(dir, 'bin');
+  fs.mkdirSync(binDir);
+  fs.writeFileSync(path.join(binDir, 'gh'), `#!/bin/sh\nexec node ${JSON.stringify(path.join(__dirname, 'helpers', 'fake-gh.js'))} "$@"\n`, { mode: 0o755 });
+  const mk = (tag, minute, files) => {
+    fs.mkdirSync(path.join(ghDir, tag, 'assets'), { recursive: true });
+    fs.writeFileSync(path.join(ghDir, tag, 'release.json'), JSON.stringify({ tag_name: tag, body: '', draft: false, published_at: new Date(Date.UTC(2026, 8, 22, 19, minute)).toISOString() }));
+    for (const [n, d] of Object.entries(files)) fs.writeFileSync(path.join(ghDir, tag, 'assets', n), d);
+  };
+  const g184 = { version: '184', url: 'https://github.com/a/b/releases/download/v184/g.gz', sha256: 'a'.repeat(64), size: 1 };
+  const L = v => ({ version: v, url: `https://github.com/a/b/releases/download/launcher-v${v}/S.exe`, sha256: 'b'.repeat(64), size: 2 });
+  // Exactly today's repo: v184 (no launcher yet), then launchers 1.0.1 and 1.0.2 carrying game 184.
+  mk('v184', 15, { 'latest.json': JSON.stringify({ schema: 1, game: g184 }) });
+  mk('launcher-v1.0.1', 19, { 'latest.json': JSON.stringify({ schema: 1, game: g184, launcher: L('1.0.1') }) });
+  mk('launcher-v1.0.2', 11 + 60, { 'latest.json': JSON.stringify({ schema: 1, game: g184, launcher: L('1.0.2') }) });
+  mk('v185', 20 + 60, { 'pokemon_battle_v185.zip': makeZip([{ name: 'pokemon_battle_v185.html', data: fakeGameHtml(185) }]) });
+  const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH}`, FAKE_GH_DIR: ghDir };
+  execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'release.js'), 'ci-game', '--repo', 'a/b', '--tag', 'v185'], { env, stdio: 'pipe' });
+  const m = JSON.parse(fs.readFileSync(path.join(ghDir, 'v185', 'assets', 'latest.json'), 'utf8'));
+  assert.equal(m.game.version, '185');
+  assert.equal(m.launcher && m.launcher.version, '1.0.2', 'launcher 1.0.2 carried forward, not dropped');
 });
