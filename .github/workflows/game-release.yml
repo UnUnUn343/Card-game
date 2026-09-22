@@ -23,3 +23,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
+      # GitHub otherwise picks "Latest" by date AND version number, and a vNNN tag outranks
+      # launcher-vX.Y.Z, so creating a draft can make an older release "Latest". Launchers read
+      # latest.json from whichever release is Latest, so pin it to the one just published.
+      - name: Mark as the latest release
+        if: ${{ !github.event.release.prerelease }}
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
