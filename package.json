@@ -1,0 +1,87 @@
+{
+  "name": "pokemon-battle",
+  "productName": "Pokemon Battle",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Бій покемонів — desktop launcher and game",
+  "main": "src/main/main.js",
+  "author": "Sasha",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
+    "playwright-core": "^1.63.0"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --data-dir=.dev-data",
+    "test": "node --test \"test/*.test.js\"",
+    "e2e": "node test/e2e/run.js",
+    "icons": "node scripts/make-icons.js",
+    "set-game": "node scripts/set-game.js",
+    "dist": "electron-builder --win --x64 --publish never",
+    "dist:linux-host": "node scripts/dist-from-linux.js",
+    "release": "node scripts/release.js"
+  },
+  "build": {
+    "appId": "ua.sasha.pokemonbattle",
+    "productName": "Pokemon Battle",
+    "copyright": "Fan project by Sasha and friends",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "app.config.json",
+      "build/icon.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "game",
+        "to": "game",
+        "filter": [
+          "game.html",
+          "game.json"
+        ]
+      }
+    ],
+    "asar": true,
+    "electronLanguages": [
+      "en-US",
+      "uk",
+      "ru"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Pokemon-Battle-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pokemon Battle",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "differentialPackage": false
+    },
+    "linux": {
+      "target": "dir",
+      "icon": "build/icon.png"
+    },
+    "publish": null
+  }
+}

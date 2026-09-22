@@ -1,0 +1,25 @@
+name: Game release
+# Publishing a GitHub release with the game's .html (or .zip) attached is all it takes.
+# This job adds the compressed build and latest.json to that release, and every launcher
+# picks the new version up on its next check (at start-up and every 30 minutes).
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  publish-game:
+    if: ${{ !startsWith(github.event.release.tag_name, 'launcher-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Add latest.json to the release
+        run: node scripts/release.js ci-game --repo "$GITHUB_REPOSITORY" --tag "$TAG"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}

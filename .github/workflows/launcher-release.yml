@@ -1,0 +1,59 @@
+name: Launcher release
+# Builds the Windows installer and publishes it; installed launchers then update themselves.
+# Start it from the Actions tab ("Run workflow", type a version like 1.1.0),
+# or push a tag named launcher-v1.1.0.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Launcher version, e.g. 1.1.0
+        required: true
+      notes:
+        description: What changed (shown in the launcher)
+        required: false
+        default: ''
+  push:
+    tags: ['launcher-v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Work out the version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          V="$INPUT_VERSION"
+          if [ -z "$V" ]; then V="${GITHUB_REF_NAME#launcher-v}"; fi
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+          echo "TAG=launcher-v$V" >> "$GITHUB_ENV"
+      - run: npm ci
+      - name: Point the launcher at this repo and bundle the newest game
+        shell: bash
+        run: |
+          node scripts/release.js configure --repo "$GITHUB_REPOSITORY"
+          node scripts/release.js fetch-game --repo "$GITHUB_REPOSITORY"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+      - run: npm test
+      - run: npx electron-builder --win --x64 --publish never
+      - name: Publish the installer and latest.json
+        shell: bash
+        env:
+          NOTES: ${{ github.event.inputs.notes }}
+        run: |
+          EXE="dist/Pokemon-Battle-Setup-$VERSION.exe"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Launcher $VERSION" --notes "${NOTES:-Launcher update}"
+          gh release upload "$TAG" "$EXE" --clobber
+          node scripts/release.js launcher --installer "$EXE" --repo "$GITHUB_REPOSITORY" --tag "$TAG" --version "$VERSION" --notes "$NOTES" --base-from-releases --upload
+          gh release edit "$TAG" --latest

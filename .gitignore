@@ -1,0 +1,8 @@
+node_modules/
+dist/
+release/
+test-results/
+.e2e-data/
+# The game build is fetched from the latest release by CI (npm run set-game locally).
+game/game.html
+.dev-data/
