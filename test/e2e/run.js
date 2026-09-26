@@ -43,12 +43,12 @@ function realGameAs(version) {
   return Buffer.from(html);
 }
 
-function publish(gh, version, notes) {
+function publish(gh, version, notes, history) {
   const gz = zlib.gzipSync(realGameAs(version), { level: 6 });
   const file = `pokemon_battle_v${version}.html.gz`;
   gh.publish(`v${version}`, {
     [file]: gz,
-    'latest.json': JSON.stringify({ schema: 1, game: { version: String(version), url: gh.assetUrl(`v${version}`, file), sha256: sha(gz), size: gz.length, notes, date: '2026-09-30' } }),
+    'latest.json': JSON.stringify({ schema: 1, game: { version: String(version), url: gh.assetUrl(`v${version}`, file), sha256: sha(gz), size: gz.length, notes, date: '2026-09-30', ...(history ? { history } : {}) } }),
   });
   return gz.length;
 }
@@ -159,7 +159,10 @@ async function main() {
 
     // ── 3. A new version appears while playing ─────────────────────────────────────────────
     console.log('3. v186 is published while the game is open');
-    publish(gh, 186, '- v186: hotfix');
+    // v186's latest.json carries the notes of the versions before it (game.history, launcher 1.0.3+)
+    const hist = [185, 184, 183, 182, 181, 180].map((v, i) => ({ version: String(v), date: `2026-09-${String(28 - 3 * i).padStart(2, '0')}`,
+      notes: `## Що нового у v${v}\n- Зміна номер один для v${v}\n- **Друга** зміна для v${v}\n- Третя зміна, трохи довша, щоб список треба було гортати: v${v}` }));
+    publish(gh, 186, '## Що нового у v186\n- v186: hotfix', hist);
     await app.evaluate(() => global.__pkmn.updater.check());
     await game.waitForSelector('#pkmn-desktop-updates .go', { timeout: 60000 });
     ok(true, 'in-game banner offers the restart');
@@ -184,6 +187,18 @@ async function main() {
     ok(gh.requests.filter(r => r.endsWith('.gz')).length === gzBefore, 'no second download');
     ok(/v186/.test(await launcher.textContent('#play-ver')), 'Play button offers v186');
     await shot(launcher, 'launcher-up-to-date');
+    const news = await launcher.evaluate(() => {
+      const b = document.getElementById('news-body');
+      return { vs: [...b.querySelectorAll('.rel-v')].map(e => e.textContent), tags: [...b.querySelectorAll('.rel-tag')].map(e => e.textContent),
+        heads: [...b.querySelectorAll('h4')].map(e => e.textContent), scrolls: b.scrollHeight > b.clientHeight + 20 };
+    });
+    ok(news.vs.join(',') === 'v186,v185,v184,v183,v182', `"Що нового": the last 5 updates, newest first (${news.vs.join(', ')})`);
+    ok(news.tags.join(',') === 'встановлена', 'the installed one is marked');
+    ok(!news.heads.some(h => /Що нового у v18\d/.test(h)), "a note's own \"Що нового у vNNN\" heading isn't repeated under its version");
+    ok(news.scrolls, 'the list scrolls');
+    await launcher.evaluate(() => { const b = document.getElementById('news-body'); b.scrollTop = b.scrollHeight; });
+    await launcher.waitForTimeout(150);
+    await shot(launcher, 'launcher-news-scrolled');
     await launcher.click('#play');
     game = await gameWindow(app);
     await game.waitForFunction(() => document.getElementById('root') && document.getElementById('root').children.length > 0, null, { timeout: 60000 });

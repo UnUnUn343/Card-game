@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const zlib = require('zlib');
-const { buildGameRelease, mergeManifest, versionFromTag, commands } = require('../scripts/release');
+const { buildGameRelease, mergeManifest, gameHistory, versionFromTag, commands } = require('../scripts/release');
 const { parseManifest } = require('../src/shared/manifest');
 const { makeZip, fakeGameHtml } = require('./helpers/fakeGithub');
 
@@ -128,4 +128,62 @@ test('the file\'s own version wins over a mistyped tag (v1.8.8 for build 188)', 
   assert.equal(r.version, '188');
   assert.equal(r.fileName, 'pokemon_battle_v188.html.gz');
   assert.match(r.entry.url, /\/download\/v1\.8\.8\/pokemon_battle_v188\.html\.gz$/);
+});
+
+test('game history: earlier versions only, newest first, one per version, notes preferred, at most 9', () => {
+  const e = (v, notes = '', date = null) => ({ version: v, notes, date, url: 'https://x/y' });
+  const h = gameHistory([[e('190', 'n190', '2026-09-26')], [e('189', ''), e('191', 'newer'), e('188', 'n188')], [e('189', 'n189'), e('190', 'dup')],
+    Array.from({ length: 12 }, (_, i) => e(String(170 + i), `n${170 + i}`))], '191');
+  assert.deepEqual(h.map(x => x.version), ['190', '189', '188', '181', '180', '179', '178', '177', '176']);
+  assert.equal(h[0].notes, 'n190');
+  assert.equal(h[1].notes, 'n189', 'an entry with notes replaces one without');
+  assert.deepEqual(Object.keys(h[0]).sort(), ['date', 'notes', 'version'], 'no urls or hashes: just what the launcher shows');
+  assert.deepEqual(gameHistory([null, undefined, []], '185'), []);
+});
+
+test('`release game` carries the previous version and its history into game.history', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pkmn-rel-'));
+  const htmlPath = path.join(dir, 'pokemon_battle_v191.html');
+  fs.writeFileSync(htmlPath, fakeGameHtml(191));
+  const base = { schema: 1, game: { version: '190', url: 'https://x/190.gz', notes: 'profile', date: '2026-09-26', history: [{ version: '189', notes: 'bots', date: '2026-09-24' }] } };
+  const log = console.log; console.log = () => {};
+  let m;
+  try { m = await commands.game({ html: htmlPath, repo: 'sasha/pb', tag: 'v191', out: path.join(dir, 'out'), baseManifest: base, notes: 'stats' }); }
+  finally { console.log = log; }
+  assert.deepEqual(m.game.history, [{ version: '190', notes: 'profile', date: '2026-09-26' }, { version: '189', notes: 'bots', date: '2026-09-24' }]);
+  const parsed = parseManifest(m, 'https://github.com/');
+  assert.deepEqual(parsed.game.history.map(x => x.version), ['190', '189']);
+});
+
+test('CI: history is rebuilt from recent releases, including ones published before history existed', { skip: process.platform === 'win32' }, async () => {
+  const { execFileSync } = require('child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pkmn-gh3-'));
+  const ghDir = path.join(dir, 'gh'); const binDir = path.join(dir, 'bin');
+  fs.mkdirSync(binDir);
+  fs.writeFileSync(path.join(binDir, 'gh'), `#!/bin/sh\nexec node ${JSON.stringify(path.join(__dirname, 'helpers', 'fake-gh.js'))} "$@"\n`, { mode: 0o755 });
+  const mk = (tag, minute, files, body = '') => {
+    fs.mkdirSync(path.join(ghDir, tag, 'assets'), { recursive: true });
+    fs.writeFileSync(path.join(ghDir, tag, 'release.json'), JSON.stringify({ tag_name: tag, body, draft: false, published_at: new Date(Date.UTC(2026, 8, 22, 10, minute)).toISOString() }));
+    for (const [n, d] of Object.entries(files)) fs.writeFileSync(path.join(ghDir, tag, 'assets', n), d);
+  };
+  const g = v => ({ version: String(v), url: `https://github.com/a/b/releases/download/v${v}/g.gz`, sha256: 'a'.repeat(64), size: 1, notes: `## Що нового у v${v}\n- change ${v}`, date: `2026-09-${v - 170}` });
+  const L = { version: '1.0.2', url: 'https://github.com/a/b/releases/download/launcher-v1.0.2/S.exe', sha256: 'b'.repeat(64), size: 2 };
+  // Old-style latest.json files (no history), a launcher release carrying game 188, then v189/v190.
+  [186, 187, 188].forEach((v, i) => mk(`v${v}`, i, { 'latest.json': JSON.stringify({ schema: 1, game: g(v), launcher: L }) }));
+  mk('launcher-v1.0.2', 5, { 'latest.json': JSON.stringify({ schema: 1, game: g(188), launcher: L }) });
+  [189, 190].forEach((v, i) => mk(`v${v}`, 10 + i, { 'latest.json': JSON.stringify({ schema: 1, game: g(v), launcher: L }) }));
+  mk('v191', 20, { 'pokemon_battle_v191.zip': makeZip([{ name: 'pokemon_battle_v191.html', data: fakeGameHtml(191) }]) }, '## Що нового у v191\n- stats');
+  const env = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH}`, FAKE_GH_DIR: ghDir };
+  execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'release.js'), 'ci-game', '--repo', 'a/b', '--tag', 'v191'], { env, stdio: 'pipe' });
+  const m = JSON.parse(fs.readFileSync(path.join(ghDir, 'v191', 'assets', 'latest.json'), 'utf8'));
+  assert.equal(m.game.version, '191');
+  assert.deepEqual(m.game.history.map(x => x.version), ['190', '189', '188', '187', '186']);
+  assert.match(m.game.history[0].notes, /change 190/);
+  assert.equal(m.launcher.version, '1.0.2');
+  // and the next one carries it on (v192 sees v191's history)
+  mk('v192', 30, { 'pokemon_battle_v192.zip': makeZip([{ name: 'pokemon_battle_v192.html', data: fakeGameHtml(192) }]) }, 'next');
+  execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'release.js'), 'ci-game', '--repo', 'a/b', '--tag', 'v192'], { env, stdio: 'pipe' });
+  const m2 = JSON.parse(fs.readFileSync(path.join(ghDir, 'v192', 'assets', 'latest.json'), 'utf8'));
+  assert.deepEqual(m2.game.history.map(x => x.version), ['191', '190', '189', '188', '187', '186']);
+  assert.match(m2.game.history[0].notes, /stats/);
 });

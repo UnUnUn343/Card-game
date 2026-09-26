@@ -22,6 +22,9 @@ const { extractGameHtml } = require('../src/shared/gamePackage');
 const { detectGameVersion, normalizeVersion, compareVersions } = require('../src/shared/versioning');
 const { SCHEMA, parseManifest, releaseAssetUrl, isConfiguredRepo } = require('../src/shared/manifest');
 
+const HISTORY_KEEP = 9;           // earlier game versions carried in latest.json (the launcher shows the last 5 updates)
+const HISTORY_NOTES_MAX = 8000;   // characters of notes kept per earlier version
+
 const ROOT = path.join(__dirname, '..');
 
 // ── pure part (unit-tested) ──────────────────────────────────────────────────────────────────
@@ -38,7 +41,26 @@ function versionFromTag(tag) {
  * Packs a game build for release.
  * @returns {{version, fileName, gz: Buffer, entry: object}}
  */
-function buildGameRelease({ input, inputName, repo, tag, version, notes, minLauncher }) {
+/**
+ * game.history for a new latest.json: the notes of the game versions before `current`, newest first.
+ * `sources` are lists of game entries (a previous latest.json's game block, its history, the game
+ * blocks found on recent releases), in any order and with repeats; the first entry with notes wins.
+ */
+function gameHistory(sources, current) {
+  const byVersion = new Map();
+  for (const list of sources) {
+    for (const e of list || []) {
+      const v = e && normalizeVersion(e.version);
+      if (!v || (current && compareVersions(v, current) >= 0)) continue;
+      const notes = str(e.notes).trim().slice(0, HISTORY_NOTES_MAX);
+      const had = byVersion.get(v);
+      if (!had || (!had.notes && notes)) byVersion.set(v, { version: v, notes, date: typeof e.date === 'string' ? e.date : (had && had.date) || null });
+    }
+  }
+  return [...byVersion.values()].sort((a, b) => compareVersions(b.version, a.version)).slice(0, HISTORY_KEEP);
+}
+
+function buildGameRelease({ input, inputName, repo, tag, version, notes, minLauncher, history }) {
   const { html, innerName } = extractGameHtml(input);
   // The file's own first line ("v188 — …") wins over the tag: it's what the game says it is, and what
   // the launcher reads from a build installed by hand. A tag typed as "v1.8.8" once published 188 as
@@ -59,6 +81,8 @@ function buildGameRelease({ input, inputName, repo, tag, version, notes, minLaun
     date: today(),
     ...(minLauncher ? { minLauncher: normalizeVersion(minLauncher) } : {}),
   };
+  const h = gameHistory([history], v);
+  if (h.length) entry.history = h;
   return { version: v, fileName, gz, entry };
 }
 
@@ -130,15 +154,24 @@ function previousManifestViaGh(repo, exceptTag) {
     .sort((x, y) => String(y.published_at || '').localeCompare(String(x.published_at || '')))
     .slice(0, 12);
   let best = null;
+  const games = [];
   for (const r of releases) {
     let m;
     try { m = JSON.parse(gh('release', 'download', r.tag_name, '--repo', repo, '--pattern', 'latest.json', '--output', '-')); }
     catch { continue; }
+    if (m && m.game && m.game.version) games.push(m.game, ...(Array.isArray(m.game.history) ? m.game.history : []));
     for (const k of ['game', 'launcher']) {
       if (!m || !m[k] || !m[k].version) continue;
       best = best || { schema: SCHEMA };
       if (!best[k] || compareVersions(m[k].version, best[k].version) > 0) best[k] = m[k];
     }
+  }
+  // The newest game block also gets the history of the ones before it, from every latest.json read
+  // (releases published before history existed still have their own game block and notes).
+  if (best && best.game) {
+    const h = gameHistory([best.game.history, games], best.game.version);
+    best.game = { ...best.game };
+    if (h.length) best.game.history = h; else delete best.game.history;
   }
   return best;
 }
@@ -159,8 +192,10 @@ const commands = {
   async game(o) {
     need(o, 'html', 'repo', 'tag');
     const notes = o['notes-file'] ? fs.readFileSync(o['notes-file'], 'utf8') : str(o.notes);
-    const rel = buildGameRelease({ input: fs.readFileSync(o.html), inputName: path.basename(o.html), repo: o.repo, tag: o.tag, version: o.version, notes, minLauncher: o['min-launcher'] });
     const base = o.baseManifest !== undefined ? o.baseManifest : await readBase(o);
+    // Earlier versions' notes: the version this one replaces, and the history it carried.
+    const history = base && base.game ? [base.game, ...(Array.isArray(base.game.history) ? base.game.history : [])] : [];
+    const rel = buildGameRelease({ input: fs.readFileSync(o.html), inputName: path.basename(o.html), repo: o.repo, tag: o.tag, version: o.version, notes, minLauncher: o['min-launcher'], history });
     const manifest = mergeManifest(base, { game: rel.entry });
     const out = o.out || path.join(ROOT, 'release', o.tag);
     const files = writeOut(out, { [rel.fileName]: rel.gz, 'latest.json': JSON.stringify(manifest, null, 2) + '\n' });
@@ -252,4 +287,4 @@ if (require.main === module) {
   commands[cmd](args()).catch(err => { console.error(`release ${cmd} failed: ${err.message}`); process.exit(1); });
 }
 
-module.exports = { buildGameRelease, buildLauncherEntry, mergeManifest, versionFromTag, commands };
+module.exports = { buildGameRelease, buildLauncherEntry, mergeManifest, gameHistory, versionFromTag, commands };

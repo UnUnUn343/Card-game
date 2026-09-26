@@ -26,7 +26,7 @@ function fileNameFromUrl(url, fallback) {
 }
 
 function publicEntry(e) {
-  return e ? { version: e.version, notes: e.notes, date: e.date, size: e.size, url: e.url, minLauncher: e.minLauncher || null } : null;
+  return e ? { version: e.version, notes: e.notes, date: e.date, size: e.size, url: e.url, minLauncher: e.minLauncher || null, history: e.history || [] } : null;
 }
 
 class UpdateService extends EventEmitter {

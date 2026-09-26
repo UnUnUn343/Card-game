@@ -81,24 +81,63 @@
     $('chip-launcher').textContent = snap.appVersion;
   }
 
+  /**
+   * "Що нового": the last NEWS_COUNT game updates, newest at the top, each with its own notes, in one
+   * scrolling list. Notes come from the feed (the newest version and, from launcher 1.0.3 on, the
+   * history it carries) and from the builds installed here, whichever has them.
+   */
+  const NEWS_COUNT = 5;
+  function newsEntries() {
+    const byV = new Map();
+    const add = e => {
+      if (!e || !e.version) return;
+      const v = String(e.version).replace(/^v/i, '');
+      const had = byV.get(v);
+      if (!had) byV.set(v, { version: v, notes: e.notes || '', date: e.date || null });
+      else { if (!had.notes && e.notes) had.notes = e.notes; if (!had.date && e.date) had.date = e.date; }
+    };
+    const latest = upd && upd.game && upd.game.latest;
+    if (latest) { add(latest); (latest.history || []).forEach(add); }
+    ((snap && snap.builds) || []).forEach(add);
+    return [...byV.values()].sort((a, b) => cmp(b.version, a.version)).slice(0, NEWS_COUNT);
+  }
+
   function renderNews() {
     const a = active();
-    const g = upd && upd.game;
-    const latest = g && g.latest;
     const head = $('news-head');
     head.textContent = '';
-    let label, notes, date;
-    if (latest && (!a || cmp(latest.version, a.version) >= 0)) {
-      label = a && cmp(latest.version, a.version) === 0 ? t('installedNow', `v${latest.version}`) : t('newVersion', `v${latest.version}`);
-      notes = latest.notes; date = latest.date;
-    } else if (a) {
-      label = t('installedNow', vName(a)); notes = a.notes; date = a.date;
-    }
-    if (label) {
-      head.appendChild(document.createTextNode(label));
-      if (date) { const s = document.createElement('span'); s.className = 'date'; s.textContent = day(date); head.appendChild(s); }
-    }
-    renderNotes($('news-body'), notes);
+    head.hidden = true;
+    const body = $('news-body');
+    body.textContent = '';
+    const list = newsEntries();
+    if (!list.length) { renderNotes(body, ''); return; }
+    list.forEach((e, i) => {
+      const sec = document.createElement('section');
+      sec.className = 'rel';
+      const h = document.createElement('div');
+      h.className = 'rel-head';
+      const name = document.createElement('span'); name.className = 'rel-v'; name.textContent = `v${e.version}`;
+      h.appendChild(name);
+      const state = a && a.version ? cmp(e.version, a.version) : 1;
+      if (state >= 0) {
+        const tag = document.createElement('span');
+        tag.className = `rel-tag ${state === 0 ? 'cur' : 'new'}`;
+        tag.textContent = state === 0 ? t('tagInstalled') : t('tagNew');
+        h.appendChild(tag);
+      }
+      if (e.date) { const d = document.createElement('span'); d.className = 'date'; d.textContent = day(e.date); h.appendChild(d); }
+      sec.appendChild(h);
+      const notes = document.createElement('div');
+      notes.className = 'rel-notes';
+      // A note's own first heading usually repeats the version ("## Що нового у v190"): the row says it already.
+      const lines = String(e.notes || '').replace(/\r/g, '').split('\n');
+      const first = lines.findIndex(l => l.trim());
+      if (first >= 0 && /^(#{1,4}\s|що нового|what.?s new)/i.test(lines[first].trim()) && new RegExp(`(^|[^\\d.])${e.version.replace(/\./g, '\\.')}(?![\\d.])`).test(lines[first])) lines.splice(first, 1);
+      if (lines.join('').trim()) renderNotes(notes, lines.join('\n'));
+      else { const p = document.createElement('p'); p.className = 'news-empty'; p.textContent = t('noNotesVersion'); notes.appendChild(p); }
+      sec.appendChild(notes);
+      body.appendChild(sec);
+    });
   }
 
   function setStatus(kind, text, sub = '', action = null) {

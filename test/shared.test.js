@@ -84,3 +84,19 @@ test('manifest parsing validates and resolves relative URLs', () => {
   assert.throws(() => parseManifest({}, 'https://x.test/'), /neither/);
   assert.throws(() => parseManifest({ game: { version: '1', url: 'javascript:alert(1)' } }, 'https://x.test/'), /http/);
 });
+
+test('game.history in latest.json is optional and cleaned, never a reason to reject the feed', () => {
+  const base = { version: '191', url: 'https://github.com/a/b/releases/download/v191/g.gz' };
+  assert.deepEqual(parseManifest({ schema: 1, game: base }, 'https://github.com/').game.history, [], 'old feeds: no history');
+  const h = parseManifest({ schema: 1, game: { ...base, history: [
+    { version: '190', notes: 'a', date: '2026-09-26' }, { version: 'v189', notes: 5 }, null, 'x', { notes: 'no version' },
+    { version: '191', notes: 'the current one again' }, { version: '190', notes: 'dup' },
+    ...Array.from({ length: 20 }, (_, i) => ({ version: String(170 + i), notes: 'n' })),
+  ] } }, 'https://github.com/').game.history;
+  assert.equal(h[0].version, '190');
+  assert.deepEqual(h[1], { version: '189', notes: '', date: null });
+  assert.ok(!h.some(x => x.version === '191'), 'the current version is not its own history');
+  assert.equal(h.filter(x => x.version === '190').length, 1);
+  assert.equal(h.length, 12, 'capped');
+  assert.equal(parseManifest({ schema: 1, game: { ...base, history: 'nonsense' } }, 'https://github.com/').game.history.length, 0);
+});

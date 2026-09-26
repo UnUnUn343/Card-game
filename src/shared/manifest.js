@@ -13,15 +13,19 @@
  *   "game":     { "version": "185", "url": "https://…/pokemon_battle_v185.html.gz",
  *                 "sha256": "…", "size": 25000000, "notes": "…", "date": "2026-09-30",
  *                 "minLauncher": "1.0.0" },
+ *                 "history": [{ "version": "184", "notes": "…", "date": "2026-09-20" }, …] },
  *   "launcher": { "version": "1.1.0", "url": "https://…/Pokemon-Battle-Setup-1.1.0.exe",
  *                 "sha256": "…", "size": 90000000, "notes": "…", "date": "…" }
  * }
  * Every release carries BOTH blocks (the release script copies the one it isn't changing
  * forward), because only the newest release's latest.json is ever read.
+ * game.history (optional, added for launcher 1.0.3): the notes of the game versions before this one,
+ * newest first, so the launcher can show the last few updates. Launchers before 1.0.3 ignore it.
  */
 const { normalizeVersion } = require('./versioning');
 
 const SCHEMA = 1;
+const HISTORY_MAX = 12;
 const PLACEHOLDER_REPO = 'OWNER/REPO';
 
 function isConfiguredRepo(repo) {
@@ -67,8 +71,24 @@ function cleanEntry(raw, kind, baseUrl) {
     size,
     notes: typeof raw.notes === 'string' ? raw.notes.slice(0, 20000) : '',
     date: typeof raw.date === 'string' ? raw.date : null,
-    ...(kind === 'game' ? { minLauncher: raw.minLauncher ? normalizeVersion(raw.minLauncher) : null } : {}),
+    ...(kind === 'game' ? { minLauncher: raw.minLauncher ? normalizeVersion(raw.minLauncher) : null, history: cleanHistory(raw.history, version) } : {}),
   };
+}
+
+/** Earlier versions' notes. Lenient: a bad item is dropped, never a reason to reject the feed. */
+function cleanHistory(raw, current) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set([current]);
+  const out = [];
+  for (const h of raw) {
+    if (!h || typeof h !== 'object') continue;
+    const version = normalizeVersion(h.version);
+    if (!version || seen.has(version)) continue;
+    seen.add(version);
+    out.push({ version, notes: typeof h.notes === 'string' ? h.notes.slice(0, 20000) : '', date: typeof h.date === 'string' ? h.date : null });
+    if (out.length >= HISTORY_MAX) break;
+  }
+  return out;
 }
 
 /** Validates and normalises a parsed latest.json. Throws with a readable message if it's broken. */
@@ -83,4 +103,4 @@ function parseManifest(json, baseUrl) {
   return { schema: SCHEMA, game, launcher };
 }
 
-module.exports = { SCHEMA, PLACEHOLDER_REPO, isConfiguredRepo, feedUrlFrom, parseUpdateSource, releaseAssetUrl, parseManifest };
+module.exports = { SCHEMA, HISTORY_MAX, cleanHistory, PLACEHOLDER_REPO, isConfiguredRepo, feedUrlFrom, parseUpdateSource, releaseAssetUrl, parseManifest };

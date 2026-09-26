@@ -15,6 +15,9 @@ window.I18N = {
     noNotes: 'Тут з’являтимуться нотатки до нових версій.',
     installedNow: v => `Встановлена ${v}`,
     newVersion: v => `Нова версія ${v}`,
+    tagNew: 'нова',
+    tagInstalled: 'встановлена',
+    noNotesVersion: 'Без опису змін.',
 
     st_notConfigured: 'Автооновлення ще не налаштовані',
     st_checking: 'Перевіряю оновлення…',
@@ -90,6 +93,9 @@ window.I18N = {
     noNotes: 'Notes for new versions will show up here.',
     installedNow: v => `Installed: ${v}`,
     newVersion: v => `New version ${v}`,
+    tagNew: 'new',
+    tagInstalled: 'installed',
+    noNotesVersion: 'No notes for this version.',
 
     st_notConfigured: 'Auto-updates are not set up yet',
     st_checking: 'Checking for updates…',
