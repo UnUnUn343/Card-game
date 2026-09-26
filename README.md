@@ -1,6 +1,7 @@
-# Бій покемонів: desktop app
+# Бій покемонів: desktop app + phone app
 
-**Download the game / all versions:** https://github.com/UnUnUn343/Card-game/releases
+**PC (Windows):** https://github.com/UnUnUn343/Card-game/releases
+**Phones (iPhone + Android):** https://ununun343.github.io/Card-game/  ·  Android app: https://ununun343.github.io/Card-game/pokemon-battle.apk
 
 The game as a Windows app, with a launcher that updates itself. The game itself is untouched. The app plays exactly the same `.html` you build, so online play, the bot, sounds, and saved settings all work as before.
 
@@ -30,6 +31,22 @@ You can also **drag any `.html` / `.zip` build onto the launcher** to install it
 
 Settings, installed versions and logs are in `%APPDATA%\Pokemon Battle\`.
 
+## Phones
+
+The same game build, on GitHub Pages, with a small add-on (`web/mobile.js`) injected at build time.
+It lays the PC board out and scales it to fit a landscape phone screen, asks to turn the phone
+sideways during a battle, turns a **long press into the right-click** (energy conversion), closes
+card previews when you tap elsewhere, and pauses the music when the app goes to the background.
+
+- **iPhone / iPad:** open the link in **Safari → Share → Add to Home Screen**. It then opens full screen, like an app.
+- **Android:** open the link in Chrome and tap **Install** (or ⋮ → Add to Home screen), or install the APK:
+  download `pokemon-battle.apk`, allow "Install unknown apps" for the browser when Android asks, and open it.
+  The APK is a full-screen landscape shell around the same web app (no browser bars, screen stays on).
+- **Updates:** the game is cached on the phone and works offline. When a new game version is published it
+  downloads in the background, then shows **"Вийшла нова версія… Оновити"**. The Android app also says when a
+  newer APK is out (rare: only when the Android shell itself changes).
+- Saved data (settings, custom teams, card images) lives on each phone, separate from the PC.
+
 ## Publishing a new game version (you, every time)
 
 1. On GitHub, open the repo → **Releases** → **Draft a new release**.
@@ -37,6 +54,7 @@ Settings, installed versions and logs are in `%APPDATA%\Pokemon Battle\`.
 3. **Publish release.**
 
 That's it. A GitHub Action compresses the build and adds `latest.json` to the release (about a minute). Every launcher picks it up on its next check. Players see the notes in "Що нового". Anyone in a game gets a small banner, and nobody gets kicked out of a match.
+Right after that, the **"Web and Android app"** Action rebuilds the phone site from the same build (a few minutes more), and phones get their "new version" banner.
 
 Tick **"Set as a pre-release"** to publish a test build that players won't get. To try it yourself, paste that release's `latest.json` link into ⚙ → Update source.
 
@@ -45,6 +63,14 @@ Tick **"Set as a pre-release"** to publish a test build that players won't get. 
 GitHub → **Actions** → **Launcher release** → **Run workflow**, then enter a version (e.g. `1.1.0`) and optional notes.
 It builds the installer on Windows, bundles the newest game, publishes it, and every installed launcher updates itself (silently, next time it's closed or when the player clicks "Оновити зараз").
 The installer to hand to new friends is on that release's page.
+
+## Publishing a new Android app version (rare: only when `android/` changes)
+
+Bump `def appVersion = '1.0.0'` in `android/app/build.gradle` and push. The "Web and Android app" Action
+builds and signs the APK and puts it on the site; installed apps offer the download.
+The signing key lives in 4 repo secrets (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`). **Keep the backup copy of the key**: Android only installs an
+update over the app if it's signed with the same key, so a lost key means everyone reinstalls.
 
 ## One-time setup
 
@@ -70,11 +96,14 @@ npx electron . --feed=http://localhost:8080/latest.json   # test against another
 ```
 
 ```bash
-npm test          # unit tests: versions, zip/gz unpacking, store, downloader, updater, release tool (35)
+npm test          # unit tests: versions, zip/gz unpacking, store, downloader, updater, release tool, web build
 npm run e2e       # drives the real app with the real game against a fake GitHub (on Linux: xvfb-run -a npm run e2e)
 npm run dist      # build the Windows installer on Windows → dist/
 npm run dist:linux-host   # same, from Linux/macOS
 npm run icons     # re-render build/icon.png + icon.ico from build/icon.svg
+npm run web -- --game path/to/build.html   # build the phone site → web-dist/
+npm run test:web  # the phone site on emulated phones (fit, rotate, long press, offline, updates); GAME=… to pick a build
+npm run android-icons   # re-render the Android launcher icons from build/icon.svg
 ```
 
 ### Layout
@@ -88,7 +117,11 @@ src/shared/               version compare, manifest format, .html/.gz/.zip unpac
 src/launcher/             the launcher screen (plain HTML/CSS/JS, strings in i18n.js)
 src/preload/              the bridge for each window; game-preload.js draws the in-game update banner
 scripts/release.js        builds latest.json; used by the GitHub Actions
-.github/workflows/        game-release.yml (on every release), launcher-release.yml (manual)
+scripts/build-web.js      builds the phone site from a game build (+ the APK when given)
+web/                      mobile.js (the phone add-on injected into the page), sw.js (offline + updates)
+android/                  the Android app: one Activity with a full-screen WebView (built by CI)
+.github/workflows/        game-release.yml (on every release), launcher-release.yml (manual),
+                          web-app.yml (phone site + APK → GitHub Pages)
 test/                     unit tests, test/e2e/run.js, fake GitHub + fake gh CLI helpers
 ```
 

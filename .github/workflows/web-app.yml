@@ -1,0 +1,114 @@
+name: Web and Android app
+# The phone version, on GitHub Pages:
+#   https://<owner>.github.io/<repo>/                     the web app (iPhone + Android: open, then
+#                                                        "Add to Home Screen" / "Install")
+#   https://<owner>.github.io/<repo>/pokemon-battle.apk   the Android app (a full-screen shell
+#                                                        around the web app)
+# Built from the newest published game after every game release, after changes to the phone
+# code, or by hand (Actions → "Web and Android app" → Run workflow).
+# Signing the APK needs four repo secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+# ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD. Always the same key: Android only installs an update
+# over the app if it is signed with the key the app was first installed with.
+on:
+  workflow_run:
+    workflows: [Game release]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - web/**
+      - android/**
+      - scripts/build-web.js
+      - .github/workflows/web-app.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install build tools
+        run: npm ci --ignore-scripts
+      - name: Newest published game
+        run: node scripts/release.js fetch-game --repo "$GITHUB_REPOSITORY"
+      - id: pages
+        uses: actions/configure-pages@v5
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Android app
+        id: apk
+        continue-on-error: true
+        working-directory: android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PKMN_WEB_URL: ${{ steps.pages.outputs.base_url }}/
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::No signing key in the repo secrets, so no Android app this time."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          export ANDROID_KEYSTORE="$RUNNER_TEMP/release.jks"
+          gradle --no-daemon --stacktrace assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/pokemon-battle.apk"
+          sed -n "s/^def appVersion = '\(.*\)'/\1/p" app/build.gradle > "$RUNNER_TEMP/apk-version"
+          echo "Android app $(cat "$RUNNER_TEMP/apk-version"), $(stat -c %s "$RUNNER_TEMP/pokemon-battle.apk") bytes"
+          rm -f "$RUNNER_TEMP/release.jks"
+      - name: Keep the Android app already on the site
+        if: steps.apk.outcome != 'success'
+        env:
+          SITE: ${{ steps.pages.outputs.base_url }}
+        run: |
+          if curl -fsSL "$SITE/version.json" -o "$RUNNER_TEMP/old-version.json" \
+             && node -e "const a=require(process.argv[1]).android; if(!a) process.exit(1); console.log(a.version)" "$RUNNER_TEMP/old-version.json" > "$RUNNER_TEMP/apk-version" \
+             && curl -fsSL "$SITE/pokemon-battle.apk" -o "$RUNNER_TEMP/pokemon-battle.apk"; then
+            echo "::warning::Android build failed or skipped; keeping app $(cat "$RUNNER_TEMP/apk-version") from the site."
+          else
+            rm -f "$RUNNER_TEMP/pokemon-battle.apk"
+            echo "::warning::No Android app on the site yet either."
+          fi
+
+      - name: Build the site
+        run: |
+          if [ -f "$RUNNER_TEMP/pokemon-battle.apk" ]; then
+            node scripts/build-web.js --game game/game.html --out web-dist \
+              --apk "$RUNNER_TEMP/pokemon-battle.apk" --apk-version "$(cat "$RUNNER_TEMP/apk-version")"
+          else
+            node scripts/build-web.js --game game/game.html --out web-dist
+          fi
+          cat web-dist/version.json
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web-dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

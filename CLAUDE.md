@@ -23,3 +23,10 @@ Building the installer from Linux/macOS: `npm run dist:linux-host` (no Wine need
 - Launcher release = the manual "Launcher release" workflow → builds on windows-latest with `app.config.json` pointed at the repo and the newest game bundled, uploads the installer + `latest.json` (carrying the `game` block forward), marks it latest.
 - A game build that needs new launcher features: publish it with `minLauncher` set (`scripts/release.js game … --min-launcher 1.1.0`). Older launchers then show "needs a newer launcher" instead of installing it.
 - Launcher self-update runs electron-builder's one-click NSIS installer with `/S --updated [--force-run]`. Keep `nsis.oneClick: true` and `perMachine: false` (no UAC prompt), or that breaks.
+
+## Phone version (web/, android/, scripts/build-web.js)
+- The phone site is the game build + `web/mobile.js` injected by `scripts/build-web.js` (two string splices: tags after the real `<head>`, the add-on before the last `</body>`). The game file is still never edited.
+- `web/mobile.js` must never change game state; it only reads globals (`S`, `MP`, `_loopAudio`, `hideArtTip`). Long press dispatches a synthetic `contextmenu` on the `[oncontextmenu]` element, then swallows the next click (render() replaces the element under the finger).
+- `web/sw.js`: the page is cache-first under one key; updates are downloaded whole, version-checked, then swapped in. `version.json` is its contract with the site (and `android.version`/`url` for the APK notice). Only add fields.
+- The Android app is a plain WebView shell (no Capacitor); it tags its user agent `PkmnAndroid/<version>`. `useWideViewPort` + `loadWithOverviewMode` are what make the viewport-width fit work; `setTextZoom(100)` keeps the phone's font size from breaking the board. It can't be built in the Claude sandbox (Google Maven is blocked): CI builds it.
+- Verify: `npm test` and `GAME=path/to/build.html npm run test:web` (look at test-results/web/).

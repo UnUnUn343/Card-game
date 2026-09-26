@@ -6,3 +6,12 @@ test-results/
 # The game build is fetched from the latest release by CI (npm run set-game locally).
 game/game.html
 .dev-data/
+
+# Phone site build output
+web-dist/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.jks
+*.keystore

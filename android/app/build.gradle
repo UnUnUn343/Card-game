@@ -1,0 +1,60 @@
+plugins {
+    id 'com.android.application'
+}
+
+// The app's own version. Bump it only when this Android shell changes (the game itself updates
+// through the web app). Installed apps see the new number in version.json and offer the download.
+def appVersion = '1.0.0'
+def v = appVersion.tokenize('.').collect { it as int }
+
+// Where the web app lives. CI passes the repo's GitHub Pages address.
+def webUrl = System.getenv('PKMN_WEB_URL') ?: 'https://ununun343.github.io/Card-game/'
+if (!webUrl.endsWith('/')) webUrl += '/'
+
+// Release signing: CI decodes the keystore from the repo secrets into a file and points here.
+def keystore = System.getenv('ANDROID_KEYSTORE')
+
+android {
+    namespace 'ua.sasha.pokemonbattle'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'ua.sasha.pokemonbattle'
+        minSdk 24          // service workers (offline + updates) in the WebView
+        targetSdk 34
+        versionCode v[0] * 10000 + v[1] * 100 + v[2]
+        versionName appVersion
+        resValue 'string', 'web_url', webUrl
+    }
+
+    signingConfigs {
+        release {
+            if (keystore) {
+                storeFile file(keystore)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // Without the key (a local test build) fall back to the debug key; such an APK can't
+            // update one signed with the real key, so CI always passes it.
+            signingConfig keystore ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        // The app is installed from the website, not Google Play: Play's target-SDK rule doesn't apply.
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}

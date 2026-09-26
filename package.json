@@ -22,7 +22,10 @@
     "set-game": "node scripts/set-game.js",
     "dist": "electron-builder --win --x64 --publish never",
     "dist:linux-host": "node scripts/dist-from-linux.js",
-    "release": "node scripts/release.js"
+    "release": "node scripts/release.js",
+    "web": "node scripts/build-web.js",
+    "test:web": "node test/web/run.js",
+    "android-icons": "node scripts/make-android-icons.js"
   },
   "build": {
     "appId": "ua.sasha.pokemonbattle",

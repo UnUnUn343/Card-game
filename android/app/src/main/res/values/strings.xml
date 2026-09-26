@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Покемони</string>
+    <string name="offline_title">Немає інтернету</string>
+    <string name="offline_text">Перший запуск завантажує гру (близько 35 МБ). Далі вона працює й без інтернету.</string>
+    <string name="offline_retry">Спробувати ще</string>
+</resources>
