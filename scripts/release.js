@@ -40,7 +40,13 @@ function versionFromTag(tag) {
  */
 function buildGameRelease({ input, inputName, repo, tag, version, notes, minLauncher }) {
   const { html, innerName } = extractGameHtml(input);
-  const v = normalizeVersion(version) || versionFromTag(tag) || detectGameVersion(html, innerName || inputName);
+  // The file's own first line ("v188 — …") wins over the tag: it's what the game says it is, and what
+  // the launcher reads from a build installed by hand. A tag typed as "v1.8.8" once published 188 as
+  // version 1.8.8, which every launcher then saw as OLDER than 187 and ignored.
+  const fromFile = detectGameVersion(html);
+  const fromTag = versionFromTag(tag);
+  if (fromFile && fromTag && fromFile !== fromTag) console.warn(`Tag ${tag} says ${fromTag}, the file says v${fromFile}: using v${fromFile}.`);
+  const v = normalizeVersion(version) || fromFile || fromTag || detectGameVersion(html, innerName || inputName);
   if (!v) throw new Error('Cannot tell the game version: name the tag like v185, or put "v185 — …" at the top of the file.');
   const fileName = `pokemon_battle_v${v}.html.gz`;
   const gz = zlib.gzipSync(html, { level: 9 });

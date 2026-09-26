@@ -122,3 +122,10 @@ test('CI: the new latest.json keeps the NEWEST launcher even when GitHub lists a
   assert.equal(m.game.version, '185');
   assert.equal(m.launcher && m.launcher.version, '1.0.2', 'launcher 1.0.2 carried forward, not dropped');
 });
+
+test('the file\'s own version wins over a mistyped tag (v1.8.8 for build 188)', () => {
+  const r = buildGameRelease({ input: fakeGameHtml(188), inputName: 'pokemon_battle_v188.zip', repo: 'a/b', tag: 'v1.8.8' });
+  assert.equal(r.version, '188');
+  assert.equal(r.fileName, 'pokemon_battle_v188.html.gz');
+  assert.match(r.entry.url, /\/download\/v1\.8\.8\/pokemon_battle_v188\.html\.gz$/);
+});
