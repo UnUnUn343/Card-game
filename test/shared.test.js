@@ -29,12 +29,17 @@ test('game version comes from the changelog header first, then the file name', (
   assert.equal(detectGameVersion('<!DOCTYPE html><html>', 'game.html'), null);
 });
 
-test('the real bundled build is detected as v184', { skip: !fs.existsSync(path.join(__dirname, '..', 'game', 'game.html')) }, () => {
+// The launcher release bundles whatever game is newest (fetch-game), so the expected version comes
+// from game/game.json, not from a number written here (a hard-coded 184 failed once v190 was bundled).
+test('the real bundled build is detected by its own header, as game/game.json says', { skip: !fs.existsSync(path.join(__dirname, '..', 'game', 'game.html')) }, () => {
   const fd = fs.openSync(path.join(__dirname, '..', 'game', 'game.html'), 'r');
   const head = Buffer.alloc(20000);
   fs.readSync(fd, head, 0, head.length, 0);
   fs.closeSync(fd);
-  assert.equal(detectGameVersion(head, 'pokemon_battle_v183.html'), '184');
+  const v = detectGameVersion(head, 'pokemon_battle_v1.html');
+  assert.ok(v && v !== '1', `version read from the changelog header, not the file name (${v})`);
+  const metaFile = path.join(__dirname, '..', 'game', 'game.json');
+  if (fs.existsSync(metaFile)) assert.equal(v, JSON.parse(fs.readFileSync(metaFile, 'utf8')).version);
 });
 
 test('game builds unpack from .html, .html.gz and .zip', () => {
