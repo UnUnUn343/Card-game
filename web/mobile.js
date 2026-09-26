@@ -119,8 +119,10 @@
   // The game is laid out for a PC screen. In landscape we tell the browser to lay the page out
   // FIT_H px tall (width follows the screen's shape) and scale that to the screen, so the whole
   // board is visible without scrolling. Pinch-zoom still works for reading a card up close.
-  // The battle screen needs ~801 px of height; a little more avoids a 1-px scroll.
-  var FIT_H = 804, MIN_W = 1180, MAX_W = 2400;
+  // The local battle screen needs ~801 px of height; a little more avoids a 1-px scroll. Screens
+  // that need more (the online battle stacks both active cards in one panel) get it through
+  // extraH, measured on the page itself: see refit().
+  var FIT_H = 804, MIN_W = 1180, MAX_W = 3400, MAX_EXTRA = 900, extraH = 0;
   var vp = document.querySelector('meta[name="viewport"]');
   if (!vp) { vp = document.createElement('meta'); vp.name = 'viewport'; document.head.appendChild(vp); }
   var lastVp = '';
@@ -138,7 +140,7 @@
       var sw = Math.max(screen.width, screen.height), sh = Math.min(screen.width, screen.height);
       var aspect = (window.visualViewport ? visualViewport.width / visualViewport.height : sw / sh) || sw / sh;
       if (!isFinite(aspect) || aspect < 1) aspect = sw / sh;
-      var w = Math.round(Math.min(MAX_W, Math.max(MIN_W, FIT_H * aspect)));
+      var w = Math.round(Math.min(MAX_W, Math.max(MIN_W, (FIT_H + extraH) * aspect)));
       content = 'width=' + w + ', viewport-fit=cover';
       host.style.setProperty('--k', String(Math.max(1, Math.min(3, w / sw)).toFixed(3)));
     } else {
@@ -148,6 +150,31 @@
     if (content !== lastVp) { lastVp = content; vp.setAttribute('content', content); window.scrollTo(0, 0); }
   }
   fit();
+  // Panels that clip their content (overflow:hidden) and are too short for it mean the layout
+  // height is too small for this screen: the online battle's middle panel, for one, holds BOTH
+  // active cards and its height is whatever is left of 100vh, so at 804 px the player's own card
+  // was cut in half. Grow the layout height by the missing amount (the page then scales down a
+  // little more), and start over whenever the screen changes (menu / local battle / online battle).
+  var screenKey = '';
+  function currentScreen() { try { return (MP.mode === 'local' ? 'local' : 'online') + ':' + MP.phase + ':' + S.phase; } catch (e) { return ''; } }
+  function clippedBy() {
+    var worst = 0, els = document.querySelectorAll('#root .panel');
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i], cs = getComputedStyle(el);
+      if (cs.overflowY !== 'hidden' && cs.overflow !== 'hidden') continue;
+      var d = el.scrollHeight - el.clientHeight;
+      if (d > worst) worst = d;
+    }
+    return worst;
+  }
+  function refit() {
+    if (!landscape() || typing()) return;
+    var k = currentScreen();
+    if (k !== screenKey) { screenKey = k; if (extraH) { extraH = 0; fit(); } }
+    var d = clippedBy();
+    if (d > 4 && extraH < MAX_EXTRA) { extraH = Math.min(MAX_EXTRA, extraH + d + 12); fit(); }
+  }
+  setInterval(refit, 400);
   window.addEventListener('orientationchange', function () { setTimeout(fit, 250); });
   window.addEventListener('resize', function () { clearTimeout(fit._t); fit._t = setTimeout(fit, 150); });
   document.addEventListener('focusout', function () { clearTimeout(fit._t); fit._t = setTimeout(fit, 400); });

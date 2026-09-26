@@ -80,6 +80,31 @@ async function main() {
       await ctx.close();
     }
 
+    // ── Online battle (both active cards stacked in one panel) fits too ────────────────────────
+    console.log('online battle on a landscape phone');
+    {
+      const ctx = await phone(844, 390);
+      const p = await ctx.newPage(); await prep(p);
+      await p.goto(base); await ready(p); await noCoach(p);
+      const cards = () => p.evaluate(() => [...document.querySelectorAll('.mc-wrap')].filter(e => e.getBoundingClientRect().height > 190).map(e => {
+        const r = e.getBoundingClientRect(); let c = e.parentElement; while (c && getComputedStyle(c).overflow !== 'hidden') c = c.parentElement;
+        const cr = c ? c.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+        return r.top >= cr.top - 1 && r.bottom <= cr.bottom + 1 && r.bottom <= innerHeight + 1;
+      }));
+      await p.evaluate(() => { MP.mode = 'host'; MP.myIdx = 0; MP.phase = 'ingame'; MP.conn = { open: true, send() {} }; S.regGate = null; S.reg = currentRegulation(); S.mode = 'casual'; S.botEnabled = [false, false]; const k = Object.keys(allTeams()); startGame(k[0], k[1], 0); render(); });
+      await sleep(3000);
+      const online = await cards(); const fOn = await fits(p);
+      ok(online.length === 2 && online.every(Boolean), `both active cards fully visible (${JSON.stringify(online)}, layout ${fOn.iw}×${fOn.ih})`);
+      ok(fOn.sh <= fOn.ih + 2 && fOn.sw <= fOn.iw + 2, 'and nothing to scroll');
+      await p.screenshot({ path: path.join(OUT, 'landscape-online-battle.png') });
+      // Back to a local battle: the extra height is dropped again (the local board uses 804).
+      await p.evaluate(() => { MP.mode = 'local'; MP.conn = null; const k = Object.keys(allTeams()); startGame(k[0], k[1], 0); render(); });
+      await sleep(2000);
+      const fLoc = await fits(p);
+      ok(fLoc.ih < 900, `local battle goes back to the normal fit (layout height ${fLoc.ih})`);
+      await ctx.close();
+    }
+
     // ── Portrait: menus fine, battle asks to rotate ────────────────────────────────────────────
     console.log('portrait 390×844');
     {
