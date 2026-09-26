@@ -223,6 +223,16 @@ async function main() {
       await p.evaluate(() => { const b = [...document.getElementById('pkmn-web-ui').shadowRoot.querySelectorAll('button')].find(x => /Оновити/.test(x.textContent)); b.click(); });
       await p.waitForLoadState('load'); await ready(p);
       ok((await p.evaluate(() => document.querySelector('meta[name=pkmn-version]').content)) === v2, `after "Оновити" the app runs v${v2}`);
+
+      // A phone-only fix (same game version, new add-on) must reach the phone too: the site's build
+      // id lives in sw.js, so the browser installs the new service worker, which fetches the page.
+      const html2 = fs.readFileSync(path.join(site, 'index.html'), 'utf8');
+      fs.writeFileSync(path.join(site, 'index.html'), html2.replace('</body>', '<script>window.__addonFix=1</script></body>'));
+      const sw2 = fs.readFileSync(path.join(site, 'sw.js'), 'utf8');
+      fs.writeFileSync(path.join(site, 'sw.js'), sw2.replace(/const BUILD = '[^']*';/, "const BUILD = 'addon-fix-1';"));
+      await p.evaluate(async () => { const reg = await navigator.serviceWorker.getRegistration(); const changed = new Promise(r => navigator.serviceWorker.addEventListener('controllerchange', r, { once: true })); await reg.update(); await changed; });
+      await p.reload(); await ready(p);
+      ok(await p.evaluate(() => window.__addonFix === 1), 'an add-on-only update reaches the phone after the next start (same game version)');
       await ctx.close();
     }
 

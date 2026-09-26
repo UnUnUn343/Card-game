@@ -6,13 +6,20 @@
  * Only same-origin GETs are handled; PeerJS, analytics and everything else go straight to the network.
  */
 'use strict';
+// Replaced by scripts/build-web.js with a hash of the whole site. Any change (a new game build, or
+// only the phone add-on) changes this file, so the browser installs this service worker anew, and
+// its install step below downloads the current page: add-on fixes reach phones without waiting for
+// the next game release.
+const BUILD = '__BUILD__';
 const CACHE = 'pkmn-game-v1';
 const SCOPE = self.registration.scope;              // e.g. https://user.github.io/Card-game/
 const PAGE = new URL('./', SCOPE).href;
 const CORE = ['./', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
+  // cache:'reload' skips the HTTP cache (GitHub Pages sends max-age=600), so this is the page that
+  // matches this BUILD, not one cached a few minutes ago.
+  event.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', event => {

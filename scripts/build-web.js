@@ -105,9 +105,13 @@ function build({ gameBuf, gameName, out, apk, apkVersion }) {
   if (!version) throw new Error('Cannot tell the game version from the file');
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
-  fs.writeFileSync(path.join(out, 'index.html'), injectWeb(html, version, fs.readFileSync(path.join(WEB, 'mobile.js'), 'utf8')));
-  fs.copyFileSync(path.join(WEB, 'sw.js'), path.join(out, 'sw.js'));
-  const info = { version, built: new Date().toISOString() };
+  const page = injectWeb(html, version, fs.readFileSync(path.join(WEB, 'mobile.js'), 'utf8'));
+  fs.writeFileSync(path.join(out, 'index.html'), page);
+  // The site's build id: changes whenever anything served changes (page or service worker code).
+  const swSrc = fs.readFileSync(path.join(WEB, 'sw.js'), 'utf8');
+  const build = require('crypto').createHash('sha256').update(page).update(swSrc).digest('hex').slice(0, 12);
+  fs.writeFileSync(path.join(out, 'sw.js'), swSrc.replace("'__BUILD__'", `'${build}'`));
+  const info = { version, build, built: new Date().toISOString() };
   if (apk) {
     if (!apkVersion) throw new Error('--apk needs --apk-version');
     fs.copyFileSync(apk, path.join(out, APK_NAME));
@@ -117,7 +121,7 @@ function build({ gameBuf, gameName, out, apk, apkVersion }) {
   fs.writeFileSync(path.join(out, 'manifest.webmanifest'), JSON.stringify(manifest(), null, 2) + '\n');
   fs.writeFileSync(path.join(out, '.nojekyll'), '');
   icons(out);
-  return { version, out };
+  return { version, build, out };
 }
 
 if (require.main === module) {
