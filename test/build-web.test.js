@@ -51,7 +51,7 @@ test('build writes the site; version.json carries the game version', () => {
   const v = JSON.parse(fs.readFileSync(path.join(dir, 'version.json'), 'utf8'));
   assert.equal(v.version, '190');
   assert.equal(v.android, undefined);
-  assert.equal(manifest().orientation, 'landscape');
+  assert.equal(manifest().orientation, 'any');
 });
 
 test('with --apk the site offers the Android app and says which version it is', () => {

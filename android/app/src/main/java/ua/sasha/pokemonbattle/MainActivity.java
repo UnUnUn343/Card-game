@@ -3,6 +3,7 @@ package ua.sasha.pokemonbattle;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.graphics.Color;
 import android.net.Uri;
@@ -16,6 +17,7 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.webkit.RenderProcessGoneDetail;
+import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -25,11 +27,14 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 /**
- * The whole app: a full-screen, landscape WebView showing the web version of the game
+ * The whole app: a full-screen WebView showing the web version of the game
  * (GitHub Pages). The web app does the rest: its service worker keeps the game cached for offline
  * play and downloads new game versions; the page scales the board to the screen and turns a long
  * press into the game's right-click. The user agent carries "PkmnAndroid/<version>" so the page
  * knows it's inside this app (no "install" hint; offers a newer APK when version.json lists one).
+ * The screen follows the phone's rotation (game 2.0.0 plays upright too) unless the player picks
+ * "always portrait" or "always landscape" in the game's menu: the page then calls
+ * PkmnAndroid.setOrientation("portrait" | "landscape" | "auto").
  */
 public class MainActivity extends Activity {
     private static final int REQ_FILE = 1;
@@ -70,6 +75,23 @@ public class MainActivity extends Activity {
 
         web.setWebViewClient(new Client());
         web.setWebChromeClient(new Chrome());
+        web.addJavascriptInterface(new Bridge(), "PkmnAndroid");
+    }
+
+    /** What the page may ask of the app. Only our own site is ever loaded here (see isOurs). */
+    private class Bridge {
+        @JavascriptInterface
+        public void setOrientation(final String mode) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    int o = "portrait".equals(mode) ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                            : "landscape".equals(mode) ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            : ActivityInfo.SCREEN_ORIENTATION_FULL_USER;
+                    if (getRequestedOrientation() != o) setRequestedOrientation(o);
+                }
+            });
+        }
     }
 
     private String appVersion() {

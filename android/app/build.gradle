@@ -4,7 +4,7 @@ plugins {
 
 // The app's own version. Bump it only when this Android shell changes (the game itself updates
 // through the web app). Installed apps see the new number in version.json and offer the download.
-def appVersion = '1.0.0'
+def appVersion = '1.1.0'
 def v = appVersion.tokenize('.').collect { it as int }
 
 // Where the web app lives. CI passes the repo's GitHub Pages address.

@@ -4,7 +4,8 @@
  * build keeps working on PC exactly as before.
  *
  *   everywhere : offline cache + update check (service worker), "new version" banner
- *   touch      : landscape fit-to-screen, rotate prompt, long-press = right-click,
+ *   touch      : landscape fit-to-screen, the player's choice of screen orientation (game 2.0.0+; older
+ *                builds: rotate prompt), long-press = right-click,
  *                no double-tap zoom / text callouts, install hint
  *
  * It reads the game's globals (S, MP, render) but never changes game state.
@@ -37,6 +38,7 @@
     '.rot .ph{width:64px;height:104px;border:4px solid #a78bfa;border-radius:14px;animation:turn 1.8s ease-in-out infinite}' +
     '.rot small{color:#64748b}.rot button{margin-top:6px;font:14px system-ui,sans-serif;background:none;border:1px solid #334155;color:#94a3b8;border-radius:10px;padding:8px 14px}' +
     '@keyframes turn{0%,20%{transform:rotate(0)}55%,100%{transform:rotate(-90deg)}}' +
+    '.rot.back .ph{animation-name:turnBack}@keyframes turnBack{0%,20%{transform:rotate(-90deg)}55%,100%{transform:rotate(0)}}' +
     '</style><div id="rot"></div><div id="toast"></div>';
   function mount() { if (!host.isConnected) (document.body || document.documentElement).appendChild(host); }
   var $ = function (id) { return ui.getElementById(id); };
@@ -196,18 +198,53 @@
     }
   });
 
-  // ── rotate prompt: menus work upright, the board needs landscape ─────────────────────────────
-  var rotDismissed = false;
-  function needsLandscape() { try { return MP.phase === 'ingame' || S.phase === 'battle'; } catch (e) { return false; } }
+  // ── which way the phone is held ──────────────────────────────────────────────────────────────
+  // Game 2.0.0 (v200) plays both upright and sideways (window.PKMN_PORTRAIT) and lets the player choose in its
+  // menu: as the phone is held, always portrait, always landscape (localStorage pkmn_orient, event pkmn-orient).
+  // The Android app turns the screen itself (PkmnAndroid.setOrientation); an installed web app locks it with the
+  // Screen Orientation API; a browser tab can't, so during a battle it asks to turn the phone the chosen way.
+  // Older builds can't play upright: for them the board still asks for landscape, as before.
+  var rotDismissed = false, lockOk = false;
+  function orientPref() {
+    try { var v = localStorage.getItem('pkmn_orient'); return v === 'portrait' || v === 'landscape' ? v : 'auto'; } catch (e) { return 'auto'; }
+  }
+  function applyOrient() {
+    var pref = orientPref();
+    lockOk = false;
+    try { if (window.PkmnAndroid && PkmnAndroid.setOrientation) { PkmnAndroid.setOrientation(pref); lockOk = true; return; } } catch (e) {}
+    try {
+      var so = screen.orientation;
+      if (!so) return;
+      if (pref === 'auto') { if (so.unlock) so.unlock(); lockOk = true; return; }
+      if (so.lock) so.lock(pref).then(function () { lockOk = true; syncRotate(); }, function () { lockOk = false; syncRotate(); });
+    } catch (e) { lockOk = false; }
+  }
+  if (touch) {
+    applyOrient();
+    window.addEventListener('pkmn-orient', function () { rotDismissed = false; applyOrient(); setTimeout(syncRotate, 50); });
+  }
+  function inBattleScreen() { try { return MP.phase === 'ingame' || S.phase === 'battle'; } catch (e) { return false; } }
+  // the way the phone should be turned right now, or '' for none
+  function wantTurn() {
+    if (rotDismissed || !touch) return '';
+    var land = landscape();
+    if (window.PKMN_PORTRAIT !== true) return !land && inBattleScreen() ? 'landscape' : '';
+    if (lockOk || !inBattleScreen()) return '';
+    var pref = orientPref();
+    if (pref === 'landscape' && !land) return 'landscape';
+    if (pref === 'portrait' && land) return 'portrait';
+    return '';
+  }
   function syncRotate() {
     mount();
-    var show = !landscape() && needsLandscape() && !rotDismissed;
-    var el = $('rot');
-    if (show && !el.firstChild) {
-      el.innerHTML = '<div class="rot"><div class="ph"></div><div>Поверни телефон горизонтально,<br>щоб бачити все поле бою</div>' +
-        '<small>Вимкни блокування повороту, якщо екран не повертається</small><button>Продовжити так</button></div>';
+    var want = wantTurn(), el = $('rot'), cur = el.firstChild && el.firstChild.getAttribute('data-want');
+    if (want && cur !== want) {
+      el.innerHTML = '<div class="rot' + (want === 'portrait' ? ' back' : '') + '" data-want="' + want + '"><div class="ph"></div><div>' +
+        (want === 'portrait' ? 'Поверни телефон вертикально:<br>так обрано в налаштуваннях гри' :
+          window.PKMN_PORTRAIT === true ? 'Поверни телефон горизонтально:<br>так обрано в налаштуваннях гри' : 'Поверни телефон горизонтально,<br>щоб бачити все поле бою') +
+        '</div><small>Вимкни блокування повороту, якщо екран не повертається</small><button>Продовжити так</button></div>';
       el.querySelector('button').onclick = function () { rotDismissed = true; el.innerHTML = ''; };
-    } else if (!show && el.firstChild) el.innerHTML = '';
+    } else if (!want && el.firstChild) el.innerHTML = '';
   }
   setInterval(syncRotate, 400);
   window.addEventListener('orientationchange', function () { rotDismissed = false; setTimeout(syncRotate, 300); });

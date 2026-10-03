@@ -67,7 +67,7 @@ function manifest() {
     scope: './',
     display: 'fullscreen',
     display_override: ['fullscreen', 'standalone'],
-    orientation: 'landscape',
+    orientation: 'any', // game 2.0.0 plays upright too (older builds ask to turn the phone)
     background_color: '#070d18',
     theme_color: '#0a1120',
     icons: [
