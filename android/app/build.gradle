@@ -4,12 +4,20 @@ plugins {
 
 // The app's own version. Bump it only when this Android shell changes (the game itself updates
 // through the web app). Installed apps see the new number in version.json and offer the download.
-def appVersion = '1.1.0'
+def appVersion = '1.2.0'
 def v = appVersion.tokenize('.').collect { it as int }
 
 // Where the web app lives. CI passes the repo's GitHub Pages address.
 def webUrl = System.getenv('PKMN_WEB_URL') ?: 'https://ununun343.github.io/Card-game/'
 if (!webUrl.endsWith('/')) webUrl += '/'
+
+// Notifications (1.2.0): the Firebase project's Android app settings, from the repo secrets FIREBASE_APP_ID,
+// FIREBASE_API_KEY, FIREBASE_PROJECT_ID and FIREBASE_SENDER_ID (Firebase console → Project settings → Your apps).
+// They become the resources Firebase starts itself from. Without them the app builds as before, just without
+// notifications (the game then says the app can't show them).
+def fb = [appId: System.getenv('PKMN_FIREBASE_APP_ID'), apiKey: System.getenv('PKMN_FIREBASE_API_KEY'),
+          project: System.getenv('PKMN_FIREBASE_PROJECT_ID'), sender: System.getenv('PKMN_FIREBASE_SENDER_ID')]
+def fbOk = fb.values().every { it != null && !it.trim().isEmpty() }
 
 // Release signing: CI decodes the keystore from the repo secrets into a file and points here.
 def keystore = System.getenv('ANDROID_KEYSTORE')
@@ -25,6 +33,12 @@ android {
         versionCode v[0] * 10000 + v[1] * 100 + v[2]
         versionName appVersion
         resValue 'string', 'web_url', webUrl
+        if (fbOk) {
+            resValue 'string', 'google_app_id', fb.appId.trim()
+            resValue 'string', 'google_api_key', fb.apiKey.trim()
+            resValue 'string', 'project_id', fb.project.trim()
+            resValue 'string', 'gcm_defaultSenderId', fb.sender.trim()
+        }
     }
 
     signingConfigs {
@@ -57,4 +71,9 @@ android {
         checkReleaseBuilds false
         abortOnError false
     }
+}
+
+dependencies {
+    // 1.2.0: notifications
+    implementation 'com.google.firebase:firebase-messaging:24.0.0'
 }

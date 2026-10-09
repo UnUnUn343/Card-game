@@ -4,4 +4,17 @@
     <string name="offline_title">Немає інтернету</string>
     <string name="offline_text">Перший запуск завантажує гру (близько 35 МБ). Далі вона працює й без інтернету.</string>
     <string name="offline_retry">Спробувати ще</string>
+    <!-- 1.2.0: notification channels (the phone's settings list them) -->
+    <string name="ch_tour">Турніри</string>
+    <string name="ch_tour_d">Коли твій турнірний матч готовий, і нагадування про нього</string>
+    <string name="ch_live">Бої наживо</string>
+    <string name="ch_live_d">Турнірні бої, які можна подивитися</string>
+    <string name="ch_challenge">Виклики на бій</string>
+    <string name="ch_challenge_d">Коли друг кличе тебе на бій</string>
+    <string name="ch_replay">Записи боїв</string>
+    <string name="ch_replay_d">Коли з тобою діляться записом бою</string>
+    <string name="ch_remind">Нагадування</string>
+    <string name="ch_remind_d">Подвійний досвід, дослідження, знаки, рекорди й сезон</string>
+    <string name="ch_week">Підсумок тижня</string>
+    <string name="ch_week_d">Бої, перемоги й WN8 за тиждень</string>
 </resources>

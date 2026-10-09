@@ -9,6 +9,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.View;
 import android.view.ViewGroup;
@@ -26,6 +27,11 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import org.json.JSONObject;
+
+import java.lang.ref.WeakReference;
+import java.util.Map;
+
 /**
  * The whole app: a full-screen WebView showing the web version of the game
  * (GitHub Pages). The web app does the rest: its service worker keeps the game cached for offline
@@ -35,9 +41,18 @@ import android.webkit.WebViewClient;
  * The screen follows the phone's rotation (game 2.0.0 plays upright too) unless the player picks
  * "always portrait" or "always landscape" in the game's menu: the page then calls
  * PkmnAndroid.setOrientation("portrait" | "landscape" | "auto").
+ * Notifications (1.2.0): see Push. A tapped notification opens the game at its link (home + "#go=…"); while
+ * the game is on screen, new ones go to the page instead (window.pkmnPushIn) and it shows a banner.
  */
 public class MainActivity extends Activity {
     private static final int REQ_FILE = 1;
+    private static final int REQ_PUSH = 2;
+    static final String ACTION_OPEN = "ua.sasha.pokemonbattle.OPEN";
+    static final String EXTRA_LINK = "link";
+
+    // the one activity, for the notification service (it runs on its own thread)
+    private static WeakReference<MainActivity> current = new WeakReference<>(null);
+    private static volatile boolean onScreen = false;
 
     private WebView web;
     private String home;
@@ -52,8 +67,72 @@ public class MainActivity extends Activity {
             WebView.setWebContentsDebuggingEnabled(true);
         }
         createWebView();
-        web.loadUrl(home);
+        String link = linkOf(getIntent());
+        web.loadUrl(link != null ? home + link : home);
         hideSystemBars();
+        current = new WeakReference<>(this);
+        Push.channels(this);
+        Push.fetchToken(this, MainActivity::sendToken);
+    }
+
+    /** "#go=…", "#join=…" or "#r=…" from a tapped notification; null otherwise. */
+    private static String linkOf(Intent i) {
+        if (i == null) return null;
+        String l = i.getStringExtra(EXTRA_LINK);
+        return l != null && l.startsWith("#") && l.length() < 300 ? l : null;
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String link = linkOf(intent);
+        if (link != null && web != null) js("location.hash=" + JSONObject.quote(link));
+    }
+
+    private void js(final String code) {
+        runOnUiThread(() -> { if (web != null) web.evaluateJavascript(code, null); });
+    }
+
+    /** From the notification service: the game is open, so it shows this one itself. */
+    static boolean forward(Map<String, String> d) {
+        final MainActivity a = current.get();
+        if (a == null || !onScreen || a.web == null) return false;
+        a.js("window.pkmnPushIn&&pkmnPushIn(" + JSONObject.quote(Push.json(d)) + ")");
+        return true;
+    }
+
+    static void sendToken(String token) {
+        MainActivity a = current.get();
+        if (a != null && token != null) a.js("window.pkmnPushToken&&pkmnPushToken(" + JSONObject.quote(token) + ")");
+    }
+
+    private void sendPermission() {
+        js("window.pkmnPushPerm&&pkmnPushPerm(" + JSONObject.quote(Push.permission(this)) + ")");
+    }
+
+    private void openNotificationSettings() {
+        Intent i;
+        if (Build.VERSION.SDK_INT >= 26) {
+            i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+            i.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+        } else {
+            i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
+        }
+        try {
+            startActivity(i);
+        } catch (ActivityNotFoundException ignored) {
+            // nothing to open
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_PUSH) {
+            sendPermission();
+            Push.fetchToken(this, MainActivity::sendToken);
+        }
     }
 
     private void createWebView() {
@@ -91,6 +170,33 @@ public class MainActivity extends Activity {
                     if (getRequestedOrientation() != o) setRequestedOrientation(o);
                 }
             });
+        }
+
+        /** {ok, token, perm, enabled}: ok = this build can show notifications at all. */
+        @JavascriptInterface
+        public String pushInfo() {
+            return Push.info(MainActivity.this);
+        }
+
+        /** Asks for the permission (Android 13+), or opens the phone's settings when only they can change it. */
+        @JavascriptInterface
+        public void pushAsk() {
+            runOnUiThread(() -> {
+                String p = Push.permission(MainActivity.this);
+                if (Build.VERSION.SDK_INT >= 33 && "ask".equals(p)) {
+                    Push.markAsked(MainActivity.this);
+                    requestPermissions(new String[]{Push.PERM}, REQ_PUSH);
+                } else if (!"granted".equals(p)) {
+                    openNotificationSettings();
+                } else {
+                    sendPermission();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void pushSettings() {
+            runOnUiThread(MainActivity.this::openNotificationSettings);
         }
     }
 
@@ -222,16 +328,21 @@ public class MainActivity extends Activity {
         super.onResume();
         if (web != null) web.onResume();
         hideSystemBars();
+        onScreen = true;
+        current = new WeakReference<>(this);
+        sendPermission();// it may have been changed in the phone's settings
     }
 
     @Override
     protected void onPause() {
+        onScreen = false;
         if (web != null) web.onPause(); // the page hears "hidden" and pauses the music
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
+        if (current.get() == this) current = new WeakReference<>(null);
         if (web != null) {
             web.destroy();
             web = null;
