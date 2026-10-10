@@ -10,7 +10,11 @@ function subscribe(channel, cb) {
 
 contextBridge.exposeInMainWorld('launcher', {
   snapshot: () => ipcRenderer.invoke('launcher:snapshot'),
-  play: buildId => ipcRenderer.invoke('launcher:play', { buildId }),
+  play: (buildId, go) => ipcRenderer.invoke('launcher:play', { buildId, go }),
+  /** 1.1.0: the dex entry on the Pokédex screen, from the active build (null when there's none) */
+  cardOfDay: () => ipcRenderer.invoke('launcher:cardOfDay'),
+  /** 1.1.0: 'live' | 'tour' from the group's Sheet: { ok, at, data } or { ok:false, error, saved } */
+  sheet: kind => ipcRenderer.invoke('launcher:sheet', kind),
   check: () => ipcRenderer.invoke('launcher:check'),
   downloadGame: () => ipcRenderer.invoke('launcher:downloadGame'),
   cancelDownload: () => ipcRenderer.invoke('launcher:cancelDownload'),
