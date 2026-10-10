@@ -8,7 +8,10 @@
 </head>
 <body>
 <header class="titlebar">
-  <div class="brand"><svg class="brand-icon" viewBox="0 0 512 512" aria-hidden="true"><use href="#emblem"/></svg><span data-t="title"></span></div>
+  <div class="brand">
+    <span class="leds" aria-hidden="true"><i></i><i></i><i></i></span>
+    <svg class="brand-icon" viewBox="0 0 512 512" aria-hidden="true"><use href="#emblem"/></svg><span data-t="title"></span>
+  </div>
   <div class="titlebar-actions">
     <div class="seg" role="group" aria-label="Language">
       <button data-lang="uk">UA</button><button data-lang="en">EN</button>
@@ -20,26 +23,44 @@
 </header>
 
 <main class="stage">
-  <div class="backdrop" aria-hidden="true">
-    <div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div>
-    <div class="grid"></div>
-    <i class="orb fire"></i><i class="orb water"></i><i class="orb grass"></i><i class="orb electric"></i><i class="orb psychic"></i>
-  </div>
-
-  <section class="hero">
-    <svg class="emblem" viewBox="0 0 512 512" aria-hidden="true"><use href="#emblem"/></svg>
-    <h1 data-t="title"></h1>
-    <p class="subtitle" data-t="subtitle"></p>
-    <div class="chips">
-      <span class="chip"><span data-t="gameVersion"></span> <b id="chip-game">—</b></span>
-      <span class="chip"><span data-t="launcherVersion"></span> <b id="chip-launcher">—</b></span>
+  <!-- the device: red shell, lens (busy while checking / downloading), cream bezel, data screen -->
+  <section class="dex">
+    <div class="dex-top" aria-hidden="true">
+      <div class="lens" id="lens"></div>
+      <div class="dex-leds"><i></i><i></i><i></i></div>
+      <div class="dex-grill"><i></i><i></i><i></i></div>
+    </div>
+    <div class="bezel">
+      <div class="bezel-dots" aria-hidden="true"><i></i><i></i></div>
+      <div class="screen">
+        <div class="scan" aria-hidden="true"></div>
+        <div class="brandrow">
+          <svg class="emblem" viewBox="0 0 512 512" aria-hidden="true"><use href="#emblem"/></svg>
+          <div><h1 data-t="title"></h1><p class="subtitle" data-t="subtitle"></p></div>
+        </div>
+        <div class="dexhead"><span data-t="dexTitle"></span><span id="dex-no"></span></div>
+        <div class="dexcard" id="dex-card"></div>
+        <div class="chips">
+          <span class="chip"><span data-t="gameVersion"></span> <b id="chip-game">—</b></span>
+          <span class="chip"><span data-t="launcherVersion"></span> <b id="chip-launcher">—</b></span>
+        </div>
+      </div>
     </div>
   </section>
 
+  <!-- a steel data panel with tabs -->
   <aside class="news">
-    <h2 data-t="whatsNew"></h2>
-    <div class="news-head" id="news-head"></div>
-    <div class="news-body" id="news-body"></div>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-news" data-tab="news" aria-selected="true" class="on" data-t="tabNews"></button>
+      <button role="tab" id="tab-live" data-tab="live" aria-selected="false"><span data-t="tabLive"></span> <span class="cnt" id="live-count" hidden></span></button>
+      <button role="tab" id="tab-tour" data-tab="tour" aria-selected="false" data-t="tabTour"></button>
+    </div>
+    <div class="pane" data-pane="news" role="tabpanel">
+      <div class="news-head" id="news-head"></div>
+      <div class="news-body" id="news-body"></div>
+    </div>
+    <div class="pane" data-pane="live" role="tabpanel" hidden><div class="pane-body" id="live-body"></div></div>
+    <div class="pane" data-pane="tour" role="tabpanel" hidden><div class="pane-body" id="tour-body"></div></div>
   </aside>
 </main>
 
@@ -111,25 +132,22 @@
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
-    <linearGradient id="e-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2e1065"/><stop offset=".55" stop-color="#140f35"/><stop offset="1" stop-color="#070d18"/></linearGradient>
-    <radialGradient id="e-glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#8b5cf6" stop-opacity=".55"/><stop offset=".6" stop-color="#6d28d9" stop-opacity=".18"/><stop offset="1" stop-color="#6d28d9" stop-opacity="0"/></radialGradient>
-    <linearGradient id="e-ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c4b5fd"/><stop offset="1" stop-color="#7c3aed"/></linearGradient>
-    <linearGradient id="e-blade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f8fafc"/><stop offset=".5" stop-color="#e2e8f0"/><stop offset="1" stop-color="#a5b4fc"/></linearGradient>
-    <g id="e-sword">
-      <path d="M256 78 L274 110 L274 330 L238 330 L238 110 Z" fill="url(#e-blade)"/>
-      <path d="M256 118 L256 322" stroke="#6366f1" stroke-opacity=".45" stroke-width="5" stroke-linecap="round"/>
-      <rect x="200" y="328" width="112" height="22" rx="11" fill="#a78bfa"/>
-      <rect x="245" y="350" width="22" height="64" rx="7" fill="#4c1d95"/>
-      <circle cx="256" cy="428" r="17" fill="#c4b5fd"/>
-    </g>
+    <linearGradient id="e-tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#232A31"/><stop offset="1" stop-color="#12161A"/></linearGradient>
+    <linearGradient id="e-red" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E5453F"/><stop offset="1" stop-color="#AE2522"/></linearGradient>
+    <radialGradient id="e-lens" cx=".36" cy=".32" r=".75"><stop offset="0" stop-color="#A9DCFF"/><stop offset=".35" stop-color="#2F9BEA"/><stop offset="1" stop-color="#114E7E"/></radialGradient>
+    <!-- the logo: a hand of cards, the front one a red Pokédex -->
     <symbol id="emblem" viewBox="0 0 512 512">
-      <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#e-bg)"/>
-      <rect x="16" y="16" width="480" height="480" rx="112" fill="none" stroke="#a78bfa" stroke-opacity=".35" stroke-width="4"/>
-      <circle cx="256" cy="256" r="200" fill="url(#e-glow)"/>
-      <circle cx="256" cy="256" r="176" fill="none" stroke="url(#e-ring)" stroke-width="12" stroke-opacity=".9"/>
-      <use href="#e-sword" transform="translate(256 256) rotate(45) scale(.86) translate(-256 -253)"/>
-      <use href="#e-sword" transform="translate(256 256) rotate(-45) scale(.86) translate(-256 -253)"/>
-      <circle cx="256" cy="256" r="10" fill="#fff" fill-opacity=".9"/>
+      <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#e-tile)"/>
+      <g transform="rotate(-16 256 300)"><rect x="150" y="104" width="212" height="296" rx="24" fill="#323B45" stroke="#4A5562" stroke-width="6"/></g>
+      <g transform="rotate(-5 256 300)"><rect x="150" y="104" width="212" height="296" rx="24" fill="#F2A33A" stroke="#B9741C" stroke-width="6"/></g>
+      <g transform="rotate(9 256 300)">
+        <rect x="150" y="100" width="212" height="300" rx="24" fill="url(#e-red)" stroke="#6E1513" stroke-width="6"/>
+        <circle cx="196" cy="146" r="30" fill="#F4F1EA"/><circle cx="196" cy="146" r="22" fill="url(#e-lens)"/><ellipse cx="188" cy="137" rx="7" ry="5" fill="#fff" transform="rotate(-30 188 137)"/>
+        <circle cx="246" cy="134" r="7" fill="#FF7A6E"/><circle cx="268" cy="134" r="7" fill="#FFD65A"/><circle cx="290" cy="134" r="7" fill="#5BE08E"/>
+        <rect x="174" y="196" width="164" height="176" rx="14" fill="#E8E2D2"/>
+        <rect x="188" y="210" width="136" height="148" rx="8" fill="#0D2420"/>
+        <path d="M262 226 236 286h22l-12 56 42-70h-24l14-46Z" fill="#BDF5DA"/>
+      </g>
     </symbol>
   </defs>
 </svg>

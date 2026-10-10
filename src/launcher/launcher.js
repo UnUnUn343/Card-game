@@ -154,6 +154,7 @@
     const newV = g.latest ? `v${g.latest.version}` : '';
     const checked = upd.lastCheck ? t('st_checkedAt', time(upd.lastCheck)) : '';
     $('progress').hidden = g.status !== 'downloading';
+    $('lens').classList.toggle('busy', !!upd.checking || g.status === 'downloading');// 1.1.0: the lens works while the launcher does
 
     if (!upd.feedConfigured) return setStatus('', t('st_notConfigured'));
     if (g.status === 'downloading') {
@@ -270,13 +271,115 @@
     renderPlay();
     renderNews();
     renderSettings();
+    renderDex();// 1.1.0: in the language just picked
+    if (sheetState.live) renderSheet('live');
+    if (sheetState.tour) renderSheet('tour');
+  }
+
+  // ── 1.1.0: the card of the day ───────────────────────────────────────────────────────────
+  const TYPE_C = { fire: '#FF9A6B', water: '#7CC4FF', grass: '#7FE09A', electric: '#FFE06B', dragon: '#B8A4FF', psychic: '#FF9AD5', steel: '#C9D3DC', normal: '#D9DDE1', dark: '#B9A1D9', fighting: '#FF8C7A' };
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  let dex = null, dexFor, dexReady = false;// dexFor: the build the card was read from; dexReady: read at least once
+  async function loadDex() {
+    const key = (snap && snap.activeId) || null;
+    if (dexFor === key) return;
+    dexFor = key;
+    try { dex = await api.cardOfDay(); } catch { dex = null; }
+    dexReady = true;
+    renderDex();
+  }
+  function renderDex() {
+    const box = $('dex-card');
+    box.textContent = '';
+    $('dex-no').textContent = dex ? `№ ${dex.id.toUpperCase()}` : '';
+    if (!dexReady) return;// not read yet
+    box.classList.toggle('empty', !dex);
+    if (!dex) { box.textContent = t('dexNone'); return; }
+    if (dex.image) { const img = el('img', 'cardart'); img.src = dex.image; img.alt = dex.name; box.appendChild(img); }
+    const info = el('div', 'dexinfo');
+    info.appendChild(el('b', 'dexname', dex.name));
+    const meta = el('div', 'dexmeta');
+    const ty = el('span', 'type', t(`type_${dex.type}`)); ty.style.setProperty('--tc', TYPE_C[dex.type] || ''); meta.appendChild(ty);
+    meta.appendChild(el('span', '', `${dex.hp} HP`));
+    if (dex.rotation) meta.appendChild(el('span', '', t('dexRot', dex.rotation)));
+    info.appendChild(meta);
+    const ul = el('ul', 'dexatk');
+    dex.attacks.forEach(a => { const li = el('li'); li.append(el('span', '', a.name), el('em', '', a.dmg ? String(a.dmg) : '—')); ul.appendChild(li); });
+    info.appendChild(ul);
+    const foot = [dex.ability ? t('dexAbility', dex.ability) : '', dex.weak ? t('dexWeak', t(`type_${dex.weak}`).toLowerCase()) : ''].filter(Boolean).join(' · ');
+    if (foot) info.appendChild(el('div', 'dexfoot', foot));
+    box.appendChild(info);
+  }
+
+  // ── 1.1.0: the panel's tabs: Що нового / Наживо / Турніри ────────────────────────────────
+  let tab = 'news';
+  const sheetState = { live: null, tour: null, busy: {} };
+  function setTab(k) {
+    tab = k;
+    document.querySelectorAll('.tabs [data-tab]').forEach(b => { b.classList.toggle('on', b.dataset.tab === k); b.setAttribute('aria-selected', String(b.dataset.tab === k)); });
+    document.querySelectorAll('[data-pane]').forEach(p => { p.hidden = p.dataset.pane !== k; });
+    if (k === 'live' || k === 'tour') refreshSheet(k);
+  }
+  async function refreshSheet(kind) {
+    if (sheetState.busy[kind]) return;
+    sheetState.busy[kind] = true;
+    if (!sheetState[kind]) renderSheet(kind);// "Завантажую…" the first time
+    try { sheetState[kind] = await api.sheet(kind); } catch { sheetState[kind] = { ok: false, error: 'offline' }; }
+    sheetState.busy[kind] = false;
+    renderSheet(kind);
+  }
+  // what to show: a fresh answer, or the saved one with a note, or a note alone
+  function sheetData(kind) {
+    const s = sheetState[kind];
+    if (!s) return { data: null, note: t('sheetLoading') };
+    if (s.ok) return { data: s.data, note: '' };
+    if (s.error === 'no-sheet') return { data: null, note: t('sheetNone') };
+    if (s.saved) return { data: s.saved.data, note: t('sheetOffline', time(new Date(s.saved.at).toISOString())), warn: true };
+    return { data: null, note: t('sheetOfflineNone'), warn: true };
+  }
+  const watch = (label, go) => { const b = el('button', 'go', label); b.onclick = () => startGame(undefined, go); return b; };
+  function renderSheet(kind) {
+    const { data, note, warn } = sheetData(kind);
+    const box = $(kind === 'live' ? 'live-body' : 'tour-body');
+    box.textContent = '';
+    if (kind === 'live') {
+      const rows = (data && data.rows) || [];
+      $('live-count').hidden = !rows.length; $('live-count').textContent = String(rows.length);
+      rows.forEach(r => {
+        const row = el('div', 'lrow');
+        const who = el('div', 'lwho');
+        who.append(el('b', '', `${r.p1 || '?'} — ${r.p2 || '?'}`), el('small', '', [r.mode, r.turn ? t('liveTurn', r.turn) : '', r.score].filter(Boolean).join(' · ')));
+        row.append(el('span', 'ldot'), who, watch(t('liveWatch'), `live:${r.id}`));
+        box.appendChild(row);
+      });
+      if (data && !rows.length) box.appendChild(el('p', 'pnote', t('liveEmpty')));
+      if (data) box.appendChild(el('p', 'pnote', t('liveNote')));
+    } else {
+      const tours = ((data && data.tours) || []).filter(x => x.status !== 'cancelled');
+      const shown = tours.filter(x => x.status === 'running').concat(tours.filter(x => x.status === 'done').slice(-1)).slice(0, 3);
+      shown.forEach(x => {
+        const sec = el('section', 'tour');
+        const head = el('div', 'thead');
+        const txt = el('div');
+        txt.append(el('b', '', x.name), el('span', '', [t('tourFormat', x.format), t('tourPlayers', (x.players || []).length), x.status === 'running' ? t('tourRunning') : ''].filter(Boolean).join(' · ')));
+        head.append(txt, watch(t('tourOpen'), `tour:${x.id}`));
+        sec.appendChild(head);
+        if (x.status === 'done' && x.winner) sec.appendChild(el('div', 'twin', t('tourWinner', x.winner)));
+        const res = ((data && data.results) || []).filter(r => r.tour === x.id).slice(-4).reverse();
+        if (res.length) { const ul = el('ul', 'tres'); res.forEach(r => ul.appendChild(el('li', '', t('tourMatch', r.a, r.b, r.winner)))); sec.appendChild(ul); }
+        else if (x.status === 'running') sec.appendChild(el('p', 'pnote', t('tourNoResults')));
+        box.appendChild(sec);
+      });
+      if (data && !shown.length) box.appendChild(el('p', 'pnote', t('tourEmpty')));
+    }
+    if (note) box.appendChild(el('p', warn ? 'pnote warn' : 'pnote', note));
   }
 
   // ── actions ────────────────────────────────────────────────────────────────────────────
-  async function startGame(buildId) {
+  async function startGame(buildId, go) {
     if (starting) return;
     starting = true; renderPlay();
-    try { await api.play(buildId); }
+    try { await api.play(buildId, go); }
     catch (e) { starting = false; renderPlay(); toast(t('playFailed', e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')), true); }
   }
 
@@ -338,7 +441,13 @@
     });
 
     api.onUpdateState(s => { upd = s; renderStatus(); renderLauncherUpdate(); renderPlay(); renderNews(); $('last-check').textContent = upd.lastCheck ? t('st_checkedAt', time(upd.lastCheck)) : ''; });
-    api.onSnapshot(s => { snap = s; upd = s.update; renderAll(); });
+    api.onSnapshot(s => { snap = s; upd = s.update; renderAll(); loadDex(); });
+
+    // 1.1.0: the tabs; Наживо every 20 s (its count shows on the tab), Турніри every 2 minutes while it's open
+    document.querySelectorAll('.tabs [data-tab]').forEach(b => { b.onclick = () => setTab(b.dataset.tab); });
+    const seen = () => document.visibilityState === 'visible';
+    setInterval(() => { if (seen()) refreshSheet('live'); }, 20000);
+    setInterval(() => { if (seen() && tab === 'tour') refreshSheet('tour'); }, 120000);
   }
 
   (async function init() {
@@ -347,5 +456,7 @@
     upd = snap.update;
     renderAll();
     document.body.classList.add('ready');
+    loadDex();
+    refreshSheet('live');
   })();
 })();

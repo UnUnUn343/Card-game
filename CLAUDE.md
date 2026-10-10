@@ -9,6 +9,11 @@ This is an Electron wrapper + auto-updating launcher around a single-file HTML g
 - The updater (`src/main/updater.js`) must stay free of Electron imports: everything is injected so `test/updater.test.js` can run it against `test/helpers/fakeGithub.js`.
 - Sandboxed preloads can't `require` project files. That's why `game-preload.js` inlines its own version compare.
 - Launcher strings live in `src/launcher/i18n.js`: add every key to both `uk` and `en`. Main-process dialog strings are in `TEXT` in `main.js`.
+- 1.1.0: «Карта дня» and the Наживо / Турніри tabs. `src/main/gameData.js` (Electron-free, `test/gameData.test.js`) reads the
+  cards, a card's picture and the game's own Sheet address (`ANALYTICS_WEBAPP_URL`) from the active build's `.html`.
+  The main process fetches `?action=live` / `?action=tour` (read-only) and keeps the last answer in `sheet-cache.json`
+  for offline. «Дивитись» / «Відкрити» open the game with `#go=live:ID` / `#go=tour:ID` (games v204+ read it).
+- The logo is `build/icon.svg`; `npm run icons` renders `icon.png` / `icon.ico` from it.
 
 ## Verify changes
 ```bash

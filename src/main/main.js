@@ -24,6 +24,7 @@ const { feedUrlFrom, parseUpdateSource } = require('../shared/manifest');
 const { extractGameHtml } = require('../shared/gamePackage');
 const { detectGameVersion, compareVersions } = require('../shared/versioning');
 const { sha256File } = require('./downloader');
+const { cardOfDay, sheetUrl } = require('./gameData');
 
 const APP_ROOT = path.join(__dirname, '..', '..');
 const APP_ID = 'ua.sasha.pokemonbattle';
@@ -47,6 +48,7 @@ const PATHS = {
   games: path.join(DATA, 'games'),
   downloads: path.join(DATA, 'downloads'),
   logs: path.join(DATA, 'logs'),
+  sheetCache: path.join(DATA, 'sheet-cache.json'), // 1.1.0: the last Наживо / Турніри answers, for when there's no connection
   bundledGame: app.isPackaged ? path.join(process.resourcesPath, 'game') : path.join(APP_ROOT, 'game'),
 };
 
@@ -120,6 +122,48 @@ function launcherSnapshot() {
   };
 }
 
+// ── 1.1.0: what the launcher shows from the game build and the group's Sheet ─────────────────
+function localDayKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+
+/** The active build's card of the day and Sheet address, read from its .html once a day (or when the build changes). */
+let dexCache = { id: null, day: null, card: null, url: null };
+async function dexInfo() {
+  const b = store.resolveActive(settings.get('pinnedBuild'));
+  if (!b || !b.path) return null;
+  const day = localDayKey(new Date());
+  if (dexCache.id === b.id && dexCache.day === day) return dexCache;
+  const html = await fs.promises.readFile(b.path, 'utf8');
+  dexCache = { id: b.id, day, card: cardOfDay(html, day), url: sheetUrl(html) };
+  return dexCache;
+}
+
+/** Наживо / Турніри from the game's own Sheet (read-only GETs). The last good answer is kept on disk for offline. */
+const SHEET_ACTIONS = { live: 'action=live', tour: 'action=tour' };
+async function sheetRead(kind) {
+  if (!SHEET_ACTIONS[kind]) throw new Error(`Unknown sheet view ${kind}`);
+  let cache = {};
+  try { cache = JSON.parse(await fs.promises.readFile(PATHS.sheetCache, 'utf8')) || {}; } catch {}
+  const info = await dexInfo().catch(() => null);
+  if (!info || !info.url) return { ok: false, error: 'no-sheet', saved: cache[kind] || null };
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 20000);
+    let j;
+    try { j = await (await net.fetch(`${info.url}?${SHEET_ACTIONS[kind]}&n=${Date.now().toString(36)}`, { signal: ctl.signal })).json(); }
+    finally { clearTimeout(timer); }
+    if (!j || !j.ok) throw new Error((j && j.error) || 'bad answer');
+    const data = kind === 'live'
+      ? { rows: (Array.isArray(j.rows) ? j.rows : []).filter(r => r && r.status === 'live').slice(0, 12) }
+      : { tours: Array.isArray(j.tours) ? j.tours : [], results: Array.isArray(j.results) ? j.results : [] };
+    cache[kind] = { at: Date.now(), data };
+    fs.promises.writeFile(PATHS.sheetCache, JSON.stringify(cache)).catch(() => {});
+    return { ok: true, at: cache[kind].at, data };
+  } catch (err) {
+    log(`sheet ${kind} failed: ${err.message}`);
+    return { ok: false, error: 'offline', saved: cache[kind] || null };
+  }
+}
+
 function broadcast(channel, payload) {
   for (const w of [launcherWin, gameWin]) if (w && !w.isDestroyed()) w.webContents.send(channel, payload);
 }
@@ -159,11 +203,11 @@ function createLauncher() {
   launcherWin = new BrowserWindow({
     width: 1040, height: 640, minWidth: 900, minHeight: 580,
     show: false,
-    backgroundColor: '#070d18',
+    backgroundColor: '#0C0F12',
     title: 'Pokemon Battle',
     icon: path.join(APP_ROOT, 'build', 'icon.png'),
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#0a1120', symbolColor: '#cbd5e1', height: 40 },
+    titleBarOverlay: { color: '#12161A', symbolColor: '#AEB7C0', height: 40 },
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload', 'launcher-preload.js'),
       contextIsolation: true, sandbox: true, nodeIntegration: false, spellcheck: false,
@@ -195,13 +239,15 @@ function saveGameWindowState() {
   settings.set('gameWindow', { ...b, maximized: gameWin.isMaximized() });
 }
 
-function openGame(build) {
+// go: what the game opens on (1.1.0: «Дивитись» in Наживо, «Відкрити» in Турніри); the game reads #go= itself (v204+).
+function openGame(build, go = null) {
   running = build;
-  log(`play ${build.id} (${build.version || build.label}) from ${build.path}`);
+  const url = `app://game/index.html${go ? `#go=${go}` : ''}`;
+  log(`play ${build.id} (${build.version || build.label}) from ${build.path}${go ? ` go=${go}` : ''}`);
   settings.set('lastSeenVersion', build.version || settings.get('lastSeenVersion'));
   if (gameWin && !gameWin.isDestroyed()) {
     gameWin.setTitle(gameTitle());
-    gameWin.webContents.reloadIgnoringCache();
+    if (go) gameWin.loadURL(url); else gameWin.webContents.reloadIgnoringCache();
     return;
   }
   const saved = settings.get('gameWindow');
@@ -261,7 +307,7 @@ function openGame(build) {
   });
   gameWin.on('close', saveGameWindowState);
   gameWin.on('closed', () => { gameWin = null; running = null; if (!launcherWin) app.quit(); });
-  gameWin.loadURL('app://game/index.html');
+  gameWin.loadURL(url);
 }
 
 function setZoom(wc, delta) {
@@ -324,12 +370,16 @@ const SETTABLE = new Set(['lang', 'autoDownload', 'openGameDirectly', 'startFull
 function registerIpc() {
   ipcMain.handle('launcher:snapshot', () => launcherSnapshot());
 
-  ipcMain.handle('launcher:play', (_e, { buildId } = {}) => {
+  ipcMain.handle('launcher:play', (_e, { buildId, go } = {}) => {
     const build = buildId ? store.get(buildId) : store.resolveActive(settings.get('pinnedBuild'));
     if (!build) throw new Error('No game build is installed yet.');
-    openGame(build);
+    openGame(build, typeof go === 'string' && /^(live|tour):[\w-]{1,60}$/.test(go) ? go : null);
     return true;
   });
+  ipcMain.handle('launcher:cardOfDay', async () => {
+    try { const d = await dexInfo(); return d ? d.card : null; } catch (err) { log('card of the day failed', err); return null; }
+  });
+  ipcMain.handle('launcher:sheet', (_e, kind) => sheetRead(kind));
 
   ipcMain.handle('launcher:check', () => updater.check({ userInitiated: true }));
   ipcMain.handle('launcher:downloadGame', () => updater.downloadGame());

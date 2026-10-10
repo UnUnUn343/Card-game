@@ -1,37 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Pokemon Battle logo (launcher 1.1.0): a hand of cards, the front one a red Pokédex. Original art.
+       Keeps the shape scripts/build-web.js and scripts/make-android-icons.js look for: the plate (fill url(#bg),
+       rx 112), its edge (fill none), and the emblem starting with the r=200 circle; everything after it is the emblem. -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2e1065"/>
-      <stop offset="0.55" stop-color="#140f35"/>
-      <stop offset="1" stop-color="#070d18"/>
-    </linearGradient>
-    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#8b5cf6" stop-opacity="0.55"/>
-      <stop offset="0.6" stop-color="#6d28d9" stop-opacity="0.18"/>
-      <stop offset="1" stop-color="#6d28d9" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#c4b5fd"/>
-      <stop offset="1" stop-color="#7c3aed"/>
-    </linearGradient>
-    <linearGradient id="blade" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#f8fafc"/>
-      <stop offset="0.5" stop-color="#e2e8f0"/>
-      <stop offset="1" stop-color="#a5b4fc"/>
-    </linearGradient>
-    <g id="sword">
-      <path d="M256 78 L274 110 L274 330 L238 330 L238 110 Z" fill="url(#blade)"/>
-      <path d="M256 118 L256 322" stroke="#6366f1" stroke-opacity="0.45" stroke-width="5" stroke-linecap="round"/>
-      <rect x="200" y="328" width="112" height="22" rx="11" fill="#a78bfa"/>
-      <rect x="245" y="350" width="22" height="64" rx="7" fill="#4c1d95"/>
-      <circle cx="256" cy="428" r="17" fill="#c4b5fd"/>
-    </g>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#232A31"/><stop offset="1" stop-color="#12161A"/></linearGradient>
+    <radialGradient id="glow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#E04A44" stop-opacity=".22"/><stop offset="1" stop-color="#E04A44" stop-opacity="0"/></radialGradient>
+    <linearGradient id="red" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E5453F"/><stop offset="1" stop-color="#AE2522"/></linearGradient>
+    <radialGradient id="lens" cx=".36" cy=".32" r=".75"><stop offset="0" stop-color="#A9DCFF"/><stop offset=".35" stop-color="#2F9BEA"/><stop offset="1" stop-color="#114E7E"/></radialGradient>
   </defs>
   <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
-  <rect x="16" y="16" width="480" height="480" rx="112" fill="none" stroke="#a78bfa" stroke-opacity="0.35" stroke-width="4"/>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="none" stroke="#3A444F" stroke-width="4"/>
   <circle cx="256" cy="256" r="200" fill="url(#glow)"/>
-  <circle cx="256" cy="256" r="176" fill="none" stroke="url(#ring)" stroke-width="12" stroke-opacity="0.9"/>
-  <use href="#sword" transform="translate(256 256) rotate(45) scale(0.86) translate(-256 -253)"/>
-  <use href="#sword" transform="translate(256 256) rotate(-45) scale(0.86) translate(-256 -253)"/>
-  <circle cx="256" cy="256" r="10" fill="#fff" fill-opacity="0.9"/>
+  <g id="cards">
+    <g transform="rotate(-16 256 300)"><rect x="150" y="104" width="212" height="296" rx="24" fill="#323B45" stroke="#4A5562" stroke-width="6"/></g>
+    <g transform="rotate(-5 256 300)"><rect x="150" y="104" width="212" height="296" rx="24" fill="#F2A33A" stroke="#B9741C" stroke-width="6"/></g>
+    <g transform="rotate(9 256 300)">
+      <rect x="150" y="100" width="212" height="300" rx="24" fill="url(#red)" stroke="#6E1513" stroke-width="6"/>
+      <circle cx="196" cy="146" r="30" fill="#F4F1EA"/><circle cx="196" cy="146" r="22" fill="url(#lens)"/><ellipse cx="188" cy="137" rx="7" ry="5" fill="#fff" transform="rotate(-30 188 137)"/>
+      <circle cx="246" cy="134" r="7" fill="#FF7A6E"/><circle cx="268" cy="134" r="7" fill="#FFD65A"/><circle cx="290" cy="134" r="7" fill="#5BE08E"/>
+      <rect x="174" y="196" width="164" height="176" rx="14" fill="#E8E2D2"/>
+      <rect x="188" y="210" width="136" height="148" rx="8" fill="#0D2420"/>
+      <path d="M262 226 236 286h22l-12 56 42-70h-24l14-46Z" fill="#BDF5DA"/>
+    </g>
+  </g>
 </svg>
