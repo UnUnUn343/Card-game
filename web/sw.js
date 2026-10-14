@@ -2,7 +2,8 @@
  * Service worker for the web app. The game page (~33 MB) is served from the cache, so the app opens
  * instantly and works offline. Updates: when the page asks ({type:'check'}), fetch version.json; if
  * the published version is newer than the cached page, download the new page completely, swap it
- * into the cache in one step, then tell the page ({type:'update-ready'}). The next reload runs it.
+ * into the cache in one step, then tell the page ({type:'update-ready'}). It compares build hashes too,
+ * because a corrected test build and the official build can share the same game version.
  * Only same-origin GETs are handled; PeerJS, analytics and everything else go straight to the network.
  */
 'use strict';
@@ -11,7 +12,7 @@
 // its install step below downloads the current page: add-on fixes reach phones without waiting for
 // the next game release.
 const BUILD = '__BUILD__';
-const CACHE = 'pkmn-game-v1';
+const CACHE = 'pkmn-game-v2';
 const SCOPE = self.registration.scope;              // e.g. https://user.github.io/Card-game/
 const PAGE = new URL('./', SCOPE).href;
 const CORE = ['./', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png'];
@@ -75,25 +76,41 @@ let checking = null;
 async function check() {
   const res = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
   if (!res.ok) return null;
-  const { version } = await res.json();
+  const { version, build } = await res.json();
   const cache = await caches.open(CACHE);
-  const cachedVersion = await pageVersion(await cache.match(PAGE));
-  if (cachedVersion && !newer(version, cachedVersion)) return cachedVersion;
-  // Download the whole new page before touching the cache: a half-downloaded game must never run.
-  const page = await fetch(PAGE + '?v=' + encodeURIComponent(version), { cache: 'no-store' });
-  if (!page.ok) return cachedVersion;
+  const cachedPage = await cache.match(PAGE);
+  const cachedVersion = await pageVersion(cachedPage);
+
+  // Different builds may share the same game version (for example, a test v215 and the
+  // official v215). The generated BUILD hash covers the whole page and service-worker source.
+  const sameBuild = !!build && BUILD === build;
+  if (cachedPage && cachedVersion === version && sameBuild)
+    return { version: cachedVersion, changed: false };
+
+  // Compatibility with older deployments that did not publish a build hash.
+  if (!build && cachedVersion && !newer(version, cachedVersion))
+    return { version: cachedVersion, changed: false };
+
+  // Download the full current page before touching the cache; key the request by build, not
+  // only game version, so a same-version correction also bypasses the HTTP cache.
+  const page = await fetch(PAGE + '?v=' + encodeURIComponent(build || version), { cache: 'no-store' });
+  if (!page.ok) return cachedVersion ? { version: cachedVersion, changed: false } : null;
   const blob = await page.blob();
   const got = await pageVersion(new Response(blob));
-  if (got !== version) return cachedVersion; // CDN still serving the old page; try again next time
+  if (got !== version) return cachedVersion ? { version: cachedVersion, changed: false } : null;
   await cache.put(PAGE, new Response(blob, { headers: { 'content-type': 'text/html; charset=utf-8' } }));
-  return version;
+  return { version, changed: true };
 }
 
 self.addEventListener('message', event => {
   const d = event.data || {};
   if (d.type !== 'check') return;
   if (!checking) checking = check().catch(() => null).finally(() => { checking = null; });
-  event.waitUntil(checking.then(v => {
-    if (v && d.running && newer(v, d.running) && event.source) event.source.postMessage({ type: 'update-ready', version: v });
+  event.waitUntil(checking.then(result => {
+    if (!result || !d.running || !event.source) return;
+    const sameVersionRefresh = !!result.changed && result.version === d.running;
+    if (newer(result.version, d.running) || sameVersionRefresh) {
+      event.source.postMessage({ type: 'update-ready', version: result.version, force: sameVersionRefresh });
+    }
   }));
 });

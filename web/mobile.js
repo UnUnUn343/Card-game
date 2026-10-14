@@ -62,9 +62,12 @@
     for (var i = 0; i < Math.max(x.length, y.length); i++) { var d = (parseInt(x[i], 10) || 0) - (parseInt(y[i], 10) || 0); if (d) return d > 0; }
     return false;
   }
-  function offerUpdate(v) {
+  function offerUpdate(v, sameVersionRefresh) {
     var show = function () {
-      toast('Вийшла нова версія гри <b>v' + v + '</b>, вона вже завантажена.', [
+      var message = sameVersionRefresh
+        ? 'Оновлену збірку гри <b>v' + v + '</b> уже завантажено.'
+        : 'Вийшла нова версія гри <b>v' + v + '</b>, вона вже завантажена.';
+      toast(message, [
         { label: 'Пізніше' },
         { label: 'Оновити', primary: true, run: function () {
           if (inBattle() && !confirm('Поточний бій буде перервано. Оновити зараз?')) return;
@@ -79,7 +82,7 @@
       var ask = function () { if (reg.active) reg.active.postMessage({ type: 'check', running: VERSION }); };
       navigator.serviceWorker.addEventListener('message', function (e) {
         var d = e.data || {};
-        if (d.type === 'update-ready' && d.version && d.version !== VERSION) offerUpdate(d.version);
+        if (d.type === 'update-ready' && d.version && (d.version !== VERSION || d.force)) offerUpdate(d.version, !!d.force);
       });
       navigator.serviceWorker.ready.then(ask);
       setInterval(ask, 30 * 60 * 1000);
