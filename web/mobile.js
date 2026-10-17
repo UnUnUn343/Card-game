@@ -3,7 +3,7 @@
  * web app (GitHub Pages) and the Android app. The game file itself is never changed, so the same
  * build keeps working on PC exactly as before.
  *
- *   everywhere : offline cache + update check (service worker), "new version" banner
+ *   everywhere : offline cache + update check (service worker), a full-screen "new version" notice
  *   touch      : landscape fit-to-screen, the player's choice of screen orientation (game 2.0.0+; older
  *                builds: rotate prompt), long-press = right-click,
  *                no double-tap zoom / text callouts, install hint
@@ -33,13 +33,20 @@
     'border-radius:1em;padding:.85em 1em;box-shadow:0 12px 40px rgba(0,0,0,.6);display:flex;gap:.85em;align-items:center}' +
     '.toast>div{flex:1 1 auto}.toast b{color:#c4b5fd}.toast button{font:600 .93em system-ui,sans-serif;border-radius:.75em;padding:.7em 1.1em;border:1px solid #334155;background:#111c2d;color:#cbd5e1;white-space:nowrap}' +
     '.toast button.go{background:linear-gradient(135deg,#7c3aed,#6d28d9);border-color:#8b5cf6;color:#fff}' +
+    '.full{position:fixed;inset:0;z-index:2147483640;display:flex;align-items:center;justify-content:center;padding:1.5em;box-sizing:border-box;background:#05080F;' +
+    'font:calc(16px * var(--k, 1))/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:#cbd5e1;text-align:center}' +
+    '.full .card{width:100%;max-width:26em;display:flex;flex-direction:column;align-items:center;gap:1em}' +
+    '.full svg{width:4.5em;height:4.5em;fill:none;stroke:#3B7BF6;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}' +
+    '.full h2{margin:0;font-size:1.7em;line-height:1.2;color:#fff}.full p{margin:0}.full b{color:#fff}' +
+    '.full .go{width:100%;min-height:3.3em;margin-top:.5em;border:0;border-radius:.9em;background:#3B7BF6;color:#fff;font:700 1.15em system-ui,sans-serif}' +
+    '.full .later{min-height:3em;padding:0 1.4em;border:0;background:none;color:#94a3b8;font:600 .95em system-ui,sans-serif}' +
     '.rot{position:fixed;inset:0;z-index:2147483500;background:#070d18;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;' +
     'font:16px/1.4 system-ui,sans-serif;color:#cbd5e1;text-align:center;padding:24px;box-sizing:border-box}' +
     '.rot .ph{width:64px;height:104px;border:4px solid #a78bfa;border-radius:14px;animation:turn 1.8s ease-in-out infinite}' +
     '.rot small{color:#64748b}.rot button{margin-top:6px;font:14px system-ui,sans-serif;background:none;border:1px solid #334155;color:#94a3b8;border-radius:10px;padding:8px 14px}' +
     '@keyframes turn{0%,20%{transform:rotate(0)}55%,100%{transform:rotate(-90deg)}}' +
     '.rot.back .ph{animation-name:turnBack}@keyframes turnBack{0%,20%{transform:rotate(-90deg)}55%,100%{transform:rotate(0)}}' +
-    '</style><div id="rot"></div><div id="toast"></div>';
+    '</style><div id="rot"></div><div id="toast"></div><div id="full"></div>';
   function mount() { if (!host.isConnected) (document.body || document.documentElement).appendChild(host); }
   var $ = function (id) { return ui.getElementById(id); };
   function toast(html, buttons, key) {
@@ -55,6 +62,24 @@
     });
   }
 
+  // A whole-screen notice (updates): one at a time; `go` is the big button, `later` the small one under it.
+  function fullShown() { return !!($('full') && $('full').firstChild); }
+  function full(title, html, go, later, key) {
+    mount();
+    var el = $('full');
+    el.innerHTML = '<div class="full" role="dialog" aria-modal="true" data-key="' + key + '"><div class="card">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 19h16"/></svg>' +
+      '<h2></h2><p>' + html + '</p></div></div>';
+    el.querySelector('h2').textContent = title;
+    var card = el.querySelector('.card');
+    [[go, 'go'], [later, 'later']].forEach(function (x) {
+      var btn = document.createElement('button'); btn.className = x[1]; btn.textContent = x[0].label;
+      btn.onclick = function () { el.innerHTML = ''; x[0].run && x[0].run(); };
+      card.appendChild(btn);
+    });
+    card.querySelector('.go').focus();
+  }
+
   // ── offline + updates (all devices) ──────────────────────────────────────────────────────────
   function inBattle() { try { return S.phase === 'battle'; } catch (e) { return false; } }
   function newer(a, b) {
@@ -62,21 +87,23 @@
     for (var i = 0; i < Math.max(x.length, y.length); i++) { var d = (parseInt(x[i], 10) || 0) - (parseInt(y[i], 10) || 0); if (d) return d > 0; }
     return false;
   }
-  function offerUpdate(v, sameVersionRefresh) {
-    var show = function () {
-      var message = sameVersionRefresh
-        ? 'Оновлену збірку гри <b>v' + v + '</b> уже завантажено.'
-        : 'Вийшла нова версія гри <b>v' + v + '</b>, вона вже завантажена.';
-      toast(message, [
-        { label: 'Пізніше' },
-        { label: 'Оновити', primary: true, run: function () {
-          if (inBattle() && !confirm('Поточний бій буде перервано. Оновити зараз?')) return;
-          location.reload();
-        } },
-      ], 'update');
-    };
-    show();
+  var pendingUpdate = null, updateTimer = 0, UPDATE_AGAIN_MS = 5 * 60 * 1000;
+  function showUpdate() {
+    clearTimeout(updateTimer);
+    if (!pendingUpdate) return;
+    if (inBattle() || fullShown()) { updateTimer = setTimeout(showUpdate, 5000); return; }// a battle is never interrupted: right after it
+    var v = pendingUpdate.v, same = pendingUpdate.same;
+    full(same ? 'Оновлена збірка гри' : 'Вийшла нова версія гри',
+      (same ? 'Оновлену збірку гри <b>v' + v + '</b> уже завантажено.' : 'Версію <b>v' + v + '</b> уже завантажено.') +
+        ' Натисни «Оновити»: гра перезапуститься за мить, а ігри й налаштування збережуться.',
+      { label: 'Оновити', run: function () { location.reload(); } },
+      { label: 'Пізніше', run: function () { updateTimer = setTimeout(showUpdate, UPDATE_AGAIN_MS); } }, 'update');
   }
+  function offerUpdate(v, sameVersionRefresh) {
+    pendingUpdate = { v: v, same: !!sameVersionRefresh };
+    if (!fullShown()) showUpdate();
+  }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && pendingUpdate && !fullShown()) showUpdate(); });
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     navigator.serviceWorker.register('sw.js').then(function (reg) {
       var ask = function () { if (reg.active) reg.active.postMessage({ type: 'check', running: VERSION }); };
@@ -85,7 +112,7 @@
         if (d.type === 'update-ready' && d.version && (d.version !== VERSION || d.force)) offerUpdate(d.version, !!d.force);
       });
       navigator.serviceWorker.ready.then(ask);
-      setInterval(ask, 30 * 60 * 1000);
+      setInterval(ask, 5 * 60 * 1000);
       document.addEventListener('visibilitychange', function () { if (!document.hidden) ask(); });
     }).catch(function () { /* no offline mode; the game still runs */ });
   }
@@ -95,16 +122,20 @@
   if (appVersion) {
     var apkChecked = 0;
     var checkApk = function () {
-      if (Date.now() - apkChecked < 6 * 3600 * 1000) return;
+      if (Date.now() - apkChecked < 5 * 60 * 1000) return;
       apkChecked = Date.now();
       fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
         var a = j && j.android;
         if (!a || !a.url || !newer(a.version, appVersion)) return;
         try { var sn = JSON.parse(localStorage.getItem('pkmn_apk_snooze') || 'null'); if (sn && sn.v === a.version && Date.now() < sn.until) return; } catch (e) {}
-        toast('Вийшла нова версія застосунку <b>' + a.version + '</b>. Встанови її поверх цієї: ігри й налаштування збережуться.', [
-          { label: 'Пізніше', run: function () { try { localStorage.setItem('pkmn_apk_snooze', JSON.stringify({ v: a.version, until: Date.now() + 2 * 86400000 })); } catch (e) {} } },
-          { label: 'Завантажити', primary: true, run: function () { location.href = new URL(a.url, location.href).href; } },
-        ], 'apk');
+        var showApk = function () {
+          if (inBattle() || fullShown()) { setTimeout(showApk, 5000); return; }// never in the middle of a battle
+          full('Онови застосунок',
+            'Вийшла нова версія застосунку <b>' + a.version + '</b> (у тебе ' + appVersion + '). Завантаж її й встанови поверх цієї: ігри й налаштування збережуться.',
+            { label: 'Завантажити', run: function () { location.href = new URL(a.url, location.href).href; } },
+            { label: 'Пізніше', run: function () { try { localStorage.setItem('pkmn_apk_snooze', JSON.stringify({ v: a.version, until: Date.now() + 5 * 60000 })); } catch (e) {} } }, 'apk');
+        };
+        showApk();
       }).catch(function () {});
     };
     setTimeout(checkApk, 8000);
